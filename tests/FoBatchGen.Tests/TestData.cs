@@ -19,4 +19,11 @@ internal static class TestData
         Assert.Empty(errors);
         return batch!;
     }
+
+    public static ExpandedBatch Expanded(string prefix, params TaskInput[] tasks)
+    {
+        var (batch, errors) = NameExpander.Expand(Valid(prefix, tasks), Map);
+        Assert.Empty(errors);
+        return batch!;
+    }
 }
