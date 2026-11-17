@@ -1,4 +1,4 @@
-# fo-batchgen
+# fo-artifacts
 
 An MCP server for D365 Finance & Operations development. One tool, `generate_fo_artifacts`, creates
 a whole feature — enums, EDTs, tables, forms, menu items, security, entities and more — in one call:
@@ -21,7 +21,7 @@ It does not generate XML itself. It drives [d365fo-cli](https://github.com/dynam
 ## Install
 
 ```powershell
-dotnet publish src/FoBatchGen -c Release -o C:\tools\fo-batchgen
+dotnet publish src/FoArtifacts -c Release -o C:\tools\fo-artifacts
 ```
 
 ## Configure your AI client
@@ -31,14 +31,14 @@ The server reads the same environment variables as `d365fo`, plus:
 | Variable | Meaning | Default |
 |---|---|---|
 | `D365FO_CLI` | Full path of the `d365fo` executable | `d365fo` on `PATH` |
-| `FO_BATCHGEN_TIMEOUT_SECONDS` | Time limit for each `d365fo` call | `120` |
+| `FO_ARTIFACTS_TIMEOUT_SECONDS` | Time limit for each `d365fo` call | `120` |
 
 Claude Code (`.mcp.json` in your X++ repo):
 ```json
 {
   "mcpServers": {
-    "fo-batchgen": {
-      "command": "C:\\tools\\fo-batchgen\\FoBatchGen.exe",
+    "fo-artifacts": {
+      "command": "C:\\tools\\fo-artifacts\\FoArtifacts.exe",
       "env": {
         "D365FO_CLI": "C:\\tools\\d365fo\\d365fo.exe",
         "D365FO_PACKAGES_PATH": "K:\\AosService\\PackagesLocalDirectory",
@@ -54,9 +54,9 @@ VS Code / Visual Studio (`.vscode/mcp.json` or `.mcp.json`):
 ```json
 {
   "servers": {
-    "fo-batchgen": {
+    "fo-artifacts": {
       "type": "stdio",
-      "command": "C:\\tools\\fo-batchgen\\FoBatchGen.exe",
+      "command": "C:\\tools\\fo-artifacts\\FoArtifacts.exe",
       "env": { "D365FO_CLI": "C:\\tools\\d365fo\\d365fo.exe", "D365FO_CUSTOM_MODELS": "ContosoFleet", "D365FO_BRIDGE_ENABLED": "1" }
     }
   }
@@ -88,7 +88,7 @@ list-details form, a menu item and maintain security"). It calls the tool with s
 - `type` is any `d365fo generate` subcommand except the deprecated `simple-list`; `options` are its
   options without `--` (`d365fo generate <type> --help` lists them; run it in a terminal).
 - `extension` needs `options.kind` (Table, Form, …): it is passed before the name.
-- `table-relation` and `find-methods` edit an existing table; fo-batchgen finds its file.
+- `table-relation` and `find-methods` edit an existing table; fo-artifacts finds its file.
 - `dry_run: true` returns the stages and exact `d365fo` commands without writing.
 
 On failure the result names the failing task, d365fo's error and hint, and whether the rollback
@@ -121,18 +121,18 @@ Run once after installing, and after upgrading `d365fo`:
 ## Development
 
 ```bash
-dotnet test --project tests/FoBatchGen.Tests
-D365FO_CLI="$(scripts/build-d365fo.sh)" dotnet test --project tests/FoBatchGen.IntegrationTests
+dotnet test --project tests/FoArtifacts.Tests
+D365FO_CLI="$(scripts/build-d365fo.sh)" dotnet test --project tests/FoArtifacts.IntegrationTests
 ```
 
 PowerShell (the script prints only the path; don't index into its output with `[-1]`, which picks
 the last character of a single string):
 ```powershell
-dotnet test --project tests/FoBatchGen.Tests
+dotnet test --project tests/FoArtifacts.Tests
 $env:D365FO_CLI = .\scripts\build-d365fo.ps1
-dotnet test --project tests/FoBatchGen.IntegrationTests
+dotnet test --project tests/FoArtifacts.IntegrationTests
 ```
 
 Integration tests run the pinned `d365fo` against a copy of its sample model and are skipped when
 `D365FO_CLI` is not set. When moving to a newer `d365fo`, change the commit in
-`scripts/build-d365fo.*` and `src/FoBatchGen.Core/reference-map.json`, then run both test projects.
+`scripts/build-d365fo.*` and `src/FoArtifacts.Core/reference-map.json`, then run both test projects.

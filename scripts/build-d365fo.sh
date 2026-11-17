@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clones d365fo-cli at the commit fo-batchgen is tested against, builds it, and prints the d365fo path.
+# Clones d365fo-cli at the commit fo-artifacts is tested against, builds it, and prints the d365fo path.
 set -euo pipefail
 COMMIT=640406b357b5fc9bc33ba499c8ec325c5b8a5c5f
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

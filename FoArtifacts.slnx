@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FoArtifacts.Core/FoArtifacts.Core.csproj" />
+    <Project Path="src/FoArtifacts/FoArtifacts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FoArtifacts.IntegrationTests/FoArtifacts.IntegrationTests.csproj" />
+    <Project Path="tests/FoArtifacts.Tests/FoArtifacts.Tests.csproj" />
+  </Folder>
+</Solution>

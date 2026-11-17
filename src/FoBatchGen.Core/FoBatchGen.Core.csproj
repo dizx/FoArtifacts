@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <EmbeddedResource Include="reference-map.json" LogicalName="FoBatchGen.Core.reference-map.json" />
-  </ItemGroup>
-</Project>

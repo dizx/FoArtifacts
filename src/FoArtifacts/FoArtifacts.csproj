@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>FoArtifacts</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.15" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FoArtifacts.Core/FoArtifacts.Core.csproj" />
+  </ItemGroup>
+</Project>

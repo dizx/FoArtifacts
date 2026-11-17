@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <EmbeddedResource Include="reference-map.json" LogicalName="FoArtifacts.Core.reference-map.json" />
+  </ItemGroup>
+</Project>
