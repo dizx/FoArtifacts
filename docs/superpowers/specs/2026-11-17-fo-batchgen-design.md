@@ -141,7 +141,7 @@ Output (success): a short JSON summary —
   "model": "ContosoFleet",
   "stages": 6,
   "elapsed_ms": 7700,
-  "artifacts": [ { "type": "table", "name": "CFltVehicle", "path": "…/AxTable/CFltVehicle.xml" } ],
+  "artifacts": [ { "type": "table", "name": "CFltVehicle", "paths": ["…/AxTable/CFltVehicle.xml"] } ],
   "warnings": [ { "task": "privilege CFltVehicleMaintain", "message": "…" } ]
 }
 ```
