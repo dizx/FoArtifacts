@@ -14,7 +14,7 @@ It does not generate XML itself. It drives [d365fo-cli](https://github.com/dynam
 
 - .NET 10 SDK
 - `d365fo` installed and indexed (`d365fo index build`, `d365fo index extract`), with your models
-  listed in `D365FO_CUSTOM_MODELS`. Tested against d365fo commit `640406b357b5fc9bc33ba499c8ec325c5b8a5c5f`.
+  listed in `D365FO_CUSTOM_MODELS`. Tested against d365fo commit `7b37a250ada8d36688123961dea6a84e451d9333`.
 - On the dev VM: `D365FO_BRIDGE_ENABLED=1`, so files are written through the Metadata API and
   `datasource-method` / `control-method` work.
 

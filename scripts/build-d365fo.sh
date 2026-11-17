@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Clones d365fo-cli at the commit fo-artifacts is tested against, builds it, and prints the d365fo path.
 set -euo pipefail
-COMMIT=640406b357b5fc9bc33ba499c8ec325c5b8a5c5f
+COMMIT=7b37a250ada8d36688123961dea6a84e451d9333
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIR="$ROOT/.d365fo-cli"
 if [ ! -d "$DIR/.git" ]; then

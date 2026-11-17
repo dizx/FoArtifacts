@@ -1,6 +1,6 @@
 # Clones d365fo-cli at the commit fo-artifacts is tested against, builds it, and prints the d365fo path.
 $ErrorActionPreference = 'Stop'
-$Commit = '640406b357b5fc9bc33ba499c8ec325c5b8a5c5f'
+$Commit = '7b37a250ada8d36688123961dea6a84e451d9333'
 $Root = Split-Path -Parent $PSScriptRoot
 $Dir = Join-Path $Root '.d365fo-cli'
 if (-not (Test-Path (Join-Path $Dir '.git'))) {
