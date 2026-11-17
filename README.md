@@ -125,6 +125,14 @@ dotnet test --project tests/FoBatchGen.Tests
 D365FO_CLI="$(scripts/build-d365fo.sh)" dotnet test --project tests/FoBatchGen.IntegrationTests
 ```
 
+PowerShell (the script prints only the path; don't index into its output with `[-1]`, which picks
+the last character of a single string):
+```powershell
+dotnet test --project tests/FoBatchGen.Tests
+$env:D365FO_CLI = .\scripts\build-d365fo.ps1
+dotnet test --project tests/FoBatchGen.IntegrationTests
+```
+
 Integration tests run the pinned `d365fo` against a copy of its sample model and are skipped when
 `D365FO_CLI` is not set. When moving to a newer `d365fo`, change the commit in
 `scripts/build-d365fo.*` and `src/FoBatchGen.Core/reference-map.json`, then run both test projects.

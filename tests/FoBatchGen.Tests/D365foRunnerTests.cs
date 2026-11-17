@@ -7,8 +7,6 @@ namespace FoBatchGen.Tests;
 
 public class D365foRunnerTests
 {
-    private static readonly bool Posix = OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
-
     private static (string Exe, string[] Args) Sleep(int seconds) => OperatingSystem.IsWindows()
         ? ("powershell", new[] { "-NoProfile", "-Command", $"Start-Sleep -Seconds {seconds}" })
         : ("sleep", new[] { seconds.ToString() });
@@ -51,10 +49,13 @@ public class D365foRunnerTests
     [Fact]
     public async Task Child_gets_force_json_extra_environment_and_utf8()
     {
-        Assert.SkipUnless(Posix, "uses sh");
         var env = new Dictionary<string, string> { ["FO_TEST_VALUE"] = "Kjøretøy" };
-        var r = await new D365foRunner("sh", TimeSpan.FromSeconds(10), env).RunAsync(
-            ["-c", "printf '{\"ok\":true,\"data\":{\"force\":\"%s\",\"extra\":\"%s\"}}' \"$D365FO_FORCE_JSON\" \"$FO_TEST_VALUE\""], Ct);
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("powershell", new[] { "-NoProfile", "-Command",
+                "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); " +
+                "[Console]::Out.Write('{\"ok\":true,\"data\":{\"force\":\"' + $env:D365FO_FORCE_JSON + '\",\"extra\":\"' + $env:FO_TEST_VALUE + '\"}}')" })
+            : ("sh", new[] { "-c", "printf '{\"ok\":true,\"data\":{\"force\":\"%s\",\"extra\":\"%s\"}}' \"$D365FO_FORCE_JSON\" \"$FO_TEST_VALUE\"" });
+        var r = await new D365foRunner(exe, TimeSpan.FromSeconds(30), env).RunAsync(args, Ct);
         Assert.True(r.Ok, r.ErrorMessage);
         Assert.Equal("1", r.Data.GetProperty("force").GetString());
         Assert.Equal("Kjøretøy", r.Data.GetProperty("extra").GetString());
@@ -63,10 +64,14 @@ public class D365foRunnerTests
     [Fact]
     public async Task Child_does_not_inherit_the_servers_stdin()
     {
-        Assert.SkipUnless(Posix, "uses cat");
-        // cat reads stdin until EOF; with stdin closed it ends at once instead of hanging until the timeout.
-        var r = await new D365foRunner("cat", TimeSpan.FromSeconds(10)).RunAsync([], Ct);
+        // The child reads stdin until EOF; with stdin closed it ends at once instead of hanging until the timeout.
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("powershell", new[] { "-NoProfile", "-Command", "[Console]::In.ReadToEnd()" })
+            : ("cat", Array.Empty<string>());
+        var clock = Stopwatch.StartNew();
+        var r = await new D365foRunner(exe, TimeSpan.FromSeconds(30)).RunAsync(args, Ct);
         Assert.Equal("NO_ENVELOPE", r.ErrorCode);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(20), $"took {clock.Elapsed}");
     }
 
     [Theory]
