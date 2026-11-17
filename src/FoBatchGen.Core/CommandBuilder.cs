@@ -8,11 +8,8 @@ public static class CommandBuilder
         var args = new List<string> { "generate", task.Type };
         args.AddRange(task.LeadingArgs);
         args.Add(task.Name);
-        foreach (var (key, value) in task.Options)
-        {
-            args.Add("--" + key);
-            args.Add(value);
-        }
+        // "--key=value" in one token: d365fo's parser would read a separate value that starts with "-" as an option.
+        foreach (var (key, value) in task.Options) args.Add($"--{key}={value}");
         foreach (var flag in task.Flags) args.Add("--" + flag);
         if (task.Install == InstallModes.ApplyTo)
         {

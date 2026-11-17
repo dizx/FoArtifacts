@@ -126,8 +126,10 @@ The server always adds `--no-refresh --output json`, and says where to write:
   from `d365fo get table <name>` (`data.table.sourcePath`). A table that cannot be found fails the
   task (and so the batch).
 
-Tasks may not set `out`, `install-to`, `apply-to`, `output`, `overwrite` or `no-refresh`; those are
-rejected. Creating an object that already exists fails in `d365fo` (`WRITE_FAILED`), which rolls the
+Tasks may not set `out`, `install-to`, `apply-to`, `output`, `overwrite`, `no-refresh`, `add-to`,
+`into-role` or any `out-*` option; those are rejected. (`add-to`/`into-role` edit an existing role file
+in place without a journal entry, and `out-*` can write outside the model, so a rollback could not undo
+them.) Option values are passed as `--key=value`, so a value starting with `-` stays a value. Creating an object that already exists fails in `d365fo` (`WRITE_FAILED`), which rolls the
 batch back.
 
 The tool description lists the supported types and points the agent at `d365fo generate <type> --help`
@@ -179,19 +181,27 @@ maps the tool call to `BatchExecutor`.
 3. **Lock**: one batch at a time per server process (`SemaphoreSlim(1)`).
 4. **Anchor**: `journal list -n 1`; remember the newest entry id (or none). The journal is a stack,
    most recent first; `undo --steps N` pops the newest N entries.
+   **Ownership**: after each task, `journal list -n 50`; every entry newer than the last one seen belongs
+   to the batch (this covers companion objects journaled under unrelated names, and bridge entries with no
+   path). After each index refresh, `journal list -n 1` moves the marker without claiming anything, so
+   writes by others between the batch's commands are never the batch's. d365fo calls that write are not
+   cancelled; a client cancellation is honoured between calls.
 5. **Run** each stage in order; within a stage, tasks run sequentially. After each stage, including
    the last, run `index refresh --model <model>`.
 6. **On any failure** (task `ok:false`, refresh failure, timeout, crash):
    1. `journal list -n 2000`; take the entries above the anchor. If the anchor is not in the list,
       do **not** undo (report and list the files written).
-   2. Check that each of those entries is a write from this batch: its `model` equals `model`
-      (case-insensitive) and its `name` contains (case-insensitive) one of the batch's names — the
-      expanded defined names and the reference-role `name`s. Containment rather than equality,
-      because commands journal derived names (`coc` → `CustTable_Extension`, `extension` →
-      `CustTable.<suffix>`, `report` → `<Name>DP`). Kind is not compared. If any entry is not ours,
-      do **not** undo; report the failure plus the files written.
+   2. Check that each of those entries is a write from this batch: its id was claimed after one of the
+      batch's commands and its `model` equals `model`. Check also that every claimed id is still in the
+      journal (d365fo prunes beyond `D365FO_JOURNAL_MAX_ENTRIES`). If either check fails, do **not**
+      undo; report the failure plus the files written. (Replaces the earlier name-containment rule, which
+      undid other sessions' writes that shared the prefix.)
    3. Otherwise `undo --steps <count of those entries>`, then `index refresh --model <model>`.
    4. If undo fails, report it plainly with the list of files that may remain.
+   5. After undo, every file a `--install-to` task reported (`path`, and the `.label.txt` under
+      `content`) must be gone; any that remain (d365fo did not journal them) are reported with
+      `rolled_back: false`. A task stopped by the timeout is reported the same way, since it may have
+      written files it never journaled.
 7. **Return** the summary.
 
 ## 5. ReferenceMap coverage
@@ -257,4 +267,6 @@ checked-in list taken from `CliApp.cs` at the pinned commit) disagree.
 - **CLI drift**: options and journal format are those of the pinned commit. Upgrading `d365fo` means
   re-running the integration tests and updating `ReferenceMap`.
 - **Concurrent writes**: other `d365fo` writes during a batch are detected at rollback time (6.2) but
-  not prevented.
+  not prevented. A write by another process to the same model at the very moment one of the batch's own
+  commands runs is indistinguishable from the command's own companion writes and would be undone with
+  the batch.

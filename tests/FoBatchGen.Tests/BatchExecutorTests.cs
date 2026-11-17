@@ -36,10 +36,10 @@ public class BatchExecutorTests
         Assert.Equal(
             new[]
             {
-                $"generate enum CFltVehicleStatus --value Active:0 {Tail}",
-                $"generate edt CFltVehicleId --base-type String {Tail}",
+                $"generate enum CFltVehicleStatus --value=Active:0 {Tail}",
+                $"generate edt CFltVehicleId --base-type=String {Tail}",
                 Refresh,
-                $"generate table CFltVehicle --field VehicleId:CFltVehicleId:mandatory --field Status:CFltVehicleStatus {Tail}",
+                $"generate table CFltVehicle --field=VehicleId:CFltVehicleId:mandatory --field=Status:CFltVehicleStatus {Tail}",
                 Refresh,
             },
             fake.Calls.Where(c => c.StartsWith("generate ") || c.StartsWith("index refresh")));
@@ -224,5 +224,141 @@ public class BatchExecutorTests
         Assert.False(result.Ok);
         Assert.NotEmpty(result.Errors);
         Assert.Empty(fake.Calls);
+    }
+
+    [Fact]
+    public async Task A_concurrent_write_with_a_matching_name_is_never_undone()
+    {
+        // Another session writes CFltVehicleStatus2 into the same model while the batch refreshes the index.
+        var (fake, executor) = Make();
+        var refreshes = 0;
+        fake.Override = a =>
+        {
+            if (a[0] == "index" && ++refreshes == 1)
+                fake.Record("Enum", "CFltVehicleStatus2", "ContosoFleet", "/pkg/ContosoFleet/enum/CFltVehicleStatus2.xml");
+            return FailWhen("table")(a);
+        };
+
+        var result = await executor.RunAsync(Vehicle(), Ct);
+
+        Assert.False(result.Rollback!.RolledBack);
+        Assert.Contains("not from this batch", result.Rollback.Reason);
+        Assert.Contains(fake.Journal, e => e.Name == "CFltVehicleStatus2");
+        Assert.DoesNotContain(fake.Calls, c => c.StartsWith("undo"));
+    }
+
+    [Fact]
+    public async Task Companion_objects_a_task_writes_are_undone_with_it()
+    {
+        // number-sequence, workflow and report-extension journal companions whose names contain no batch name,
+        // and with the bridge on a journal entry has no target path.
+        var (fake, executor) = Make();
+        fake.Override = a =>
+        {
+            if (a[0] == "generate" && a[1] == "table")
+            {
+                var result = fake.Default(a);
+                fake.Record("Class", "FmVehicle_NumberSeqHandler", "ContosoFleet", "");
+                return result;
+            }
+            return FailWhen("form")(a);
+        };
+
+        var result = await executor.RunAsync(Vehicle(T("form", "Vehicle", """{"table":"Vehicle"}""")), Ct);
+
+        Assert.True(result.Rollback!.RolledBack, result.Rollback.Reason);
+        Assert.Equal(4, result.Rollback.Reverted);
+        Assert.Empty(fake.Journal);
+    }
+
+    [Fact]
+    public async Task Writes_pruned_from_the_journal_make_the_rollback_report_failure()
+    {
+        var (fake, executor) = Make();
+        fake.JournalCap = 2;
+        fake.Override = FailWhen("role", "BAD_INPUT");
+
+        var result = await executor.RunAsync(new BatchRequest("ContosoFleet", "CFlt",
+            [T("enum", "E1"), T("enum", "E2"), T("enum", "E3"), T("role", "R")]), Ct);
+
+        Assert.False(result.Rollback!.RolledBack);
+        Assert.Contains("no longer in the d365fo journal", result.Rollback.Reason);
+        Assert.Contains("/pkg/ContosoFleet/enum/CFltE1.xml", result.Rollback.LeftBehind);
+    }
+
+    [Fact]
+    public async Task Files_still_present_after_undo_make_the_rollback_report_failure()
+    {
+        var root = Directory.CreateTempSubdirectory("fo-batchgen-test-").FullName;
+        try
+        {
+            var (fake, executor) = Make();
+            fake.FilesRoot = root;
+            fake.Override = a =>
+            {
+                if (a[0] == "generate" && a[1] == "edt")
+                {
+                    // d365fo publishes the file, then fails to journal it (it swallows journal errors).
+                    var target = fake.TargetOf("ContosoFleet", "edt", a[2]);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.WriteAllText(target, "x");
+                    return FakeD365fo.Ok(new { path = target });
+                }
+                return FailWhen("table")(a);
+            };
+
+            var result = await executor.RunAsync(Vehicle(), Ct);
+
+            var leftover = fake.TargetOf("ContosoFleet", "edt", "CFltVehicleId");
+            Assert.False(result.Rollback!.RolledBack);
+            Assert.Equal(new[] { leftover }, result.Rollback.LeftBehind);
+            Assert.False(File.Exists(fake.TargetOf("ContosoFleet", "enum", "CFltVehicleStatus")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Apply_to_refuses_a_table_of_another_model()
+    {
+        var (fake, executor) = Make();
+        fake.ExistingTables["StdTable"] = "StdPkg";
+
+        var result = await executor.RunAsync(new BatchRequest("ContosoFleet", "CFlt", [T("find-methods", "StdTable")]), Ct);
+
+        Assert.Equal("TARGET_IN_OTHER_MODEL", result.Failure!.Code);
+        Assert.Contains("extension", result.Failure.Hint);
+        Assert.Empty(fake.Generates);
+    }
+
+    [Fact]
+    public async Task A_running_command_is_not_interrupted_by_cancellation()
+    {
+        // Killing d365fo between publishing a file and journaling it would leave an unjournaled file.
+        var (fake, executor) = Make();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        await executor.RunAsync(Vehicle(), cts.Token);
+
+        var writes = fake.Calls.Select((c, i) => (c, i)).Where(x => x.c.StartsWith("generate ") || x.c.StartsWith("index refresh") || x.c.StartsWith("undo"));
+        Assert.All(writes, x => Assert.False(fake.Cancellable[x.i], $"'{x.c}' could be cancelled"));
+    }
+
+    [Fact]
+    public async Task A_timed_out_task_is_reported_as_possibly_left_behind()
+    {
+        var (fake, executor) = Make();
+        fake.Override = a => a[0] == "generate" && a[1] == "table"
+            ? CliResult.Failure(-1, "TIMEOUT", "`d365fo generate table` did not finish within 120 s and was stopped.")
+            : null;
+
+        var result = await executor.RunAsync(Vehicle(), Ct);
+
+        Assert.Equal(2, result.Rollback!.Reverted);
+        Assert.False(result.Rollback.RolledBack);
+        Assert.Contains("table CFltVehicle", result.Rollback.Reason);
+        Assert.Contains("stopped", result.Rollback.Reason);
     }
 }

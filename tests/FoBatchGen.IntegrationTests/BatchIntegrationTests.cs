@@ -128,6 +128,43 @@ public class BatchIntegrationTests
     }
 
     [Fact]
+    public async Task Rolling_back_a_table_relation_restores_the_table()
+    {
+        RequireD365fo();
+        await using var box = await CreateAsync(Ct);
+
+        // The form runs after the table-relation in the same stage and fails on a bad option.
+        var result = await box.Executor.RunAsync(new BatchRequest(Model, "Fx",
+        [
+            T("table", "Rel", """{"field":"Vin:VIN"}"""),
+            T("table-relation", "Rel"),
+            T("form", "Broken", """{"table":"Rel","bogus":"x"}"""),
+        ]), Ct);
+
+        Assert.Contains(result.Completed, o => o.Task.Type == "table-relation");
+        Assert.Equal("form FxBroken", result.Failure!.Task);
+        Assert.True(result.Rollback!.RolledBack, Summary.ToJson(result));
+        Assert.Empty(box.ChangesSinceSnapshot());
+    }
+
+    [Fact]
+    public async Task A_label_file_d365fo_cannot_undo_is_reported_not_hidden()
+    {
+        RequireD365fo();
+        await using var box = await CreateAsync(Ct);
+
+        // d365fo journals the AxLabelFile manifest but not its .label.txt.
+        var result = await box.Executor.RunAsync(new BatchRequest(Model, "Fx",
+            [T("label-file", "FxLabels", """{"entry":"Hello=Hello"}"""), T("role", "Broken", """{"bogus":"x"}""")]), Ct);
+
+        Assert.False(result.Rollback!.RolledBack);
+        var leftover = Assert.Single(result.Rollback.LeftBehind);
+        Assert.EndsWith(".label.txt", leftover);
+        Assert.True(File.Exists(leftover));
+        Assert.Equal(new[] { "added " + Path.GetRelativePath(box.Packages, leftover) }, box.ChangesSinceSnapshot());
+    }
+
+    [Fact]
     public void Every_option_in_the_reference_map_exists_in_d365fo()
     {
         Assert.SkipWhen(CheckoutPath is null, "Run scripts/build-d365fo.sh first.");

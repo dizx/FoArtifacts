@@ -159,10 +159,31 @@ public class NameExpanderTests
     }
 
     [Fact]
-    public void Touch_names_cover_new_and_changed_objects()
+    public void A_definition_given_with_the_prefix_still_matches_bare_references()
     {
-        var batch = Expanded("CFlt", T("table", "Vehicle"), T("coc", "CustTable", """{"method":"insert"}"""));
-        Assert.Contains("CFltVehicle", batch.TouchNames);
-        Assert.Contains("CustTable", batch.TouchNames);
+        var batch = Expanded("CFlt", T("table", "CFltVehicle"), T("form", "Vehicle", """{"table":"Vehicle"}"""));
+        var form = Find(batch, "form");
+        Assert.Equal(new[] { "CFltVehicle" }, Values(form, "table"));
+        Assert.Equal(new[] { 0 }, Assert.Single(form.References).TargetTasks);
+    }
+
+    [Fact]
+    public void Query_join_parent_data_source_is_rewritten()
+    {
+        var batch = Expanded("CFlt",
+            T("table", "Vehicle"),
+            T("table", "VehicleLine"),
+            T("query", "VehicleQuery", """{"ds":"Vehicle","join":["VehicleLine:InnerJoin:Vehicle"]}"""));
+        Assert.Equal(new[] { "CFltVehicleLine:InnerJoin:CFltVehicle" }, Values(Find(batch, "query"), "join"));
+    }
+
+    [Fact]
+    public void View_field_data_source_is_rewritten()
+    {
+        var batch = Expanded("CFlt",
+            T("table", "Vehicle"),
+            T("query", "VehicleQuery", """{"ds":"Vehicle"}"""),
+            T("view", "VehicleView", """{"query":"VehicleQuery","field":["Vin:Vehicle"]}"""));
+        Assert.Equal(new[] { "Vin:CFltVehicle" }, Values(Find(batch, "view"), "field"));
     }
 }

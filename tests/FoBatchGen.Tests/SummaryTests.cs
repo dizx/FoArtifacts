@@ -77,7 +77,7 @@ public class SummaryTests
         var plan = json.GetProperty("plan").EnumerateArray().ToList();
         Assert.Equal(2, plan.Count);
         Assert.Equal(
-            "d365fo generate table CFltVehicle --field VehicleId:CFltVehicleId --install-to ContosoFleet --no-refresh --output json",
+            "d365fo generate table CFltVehicle --field=VehicleId:CFltVehicleId --install-to ContosoFleet --no-refresh --output json",
             plan[1].GetProperty("commands")[0].GetString());
     }
 }

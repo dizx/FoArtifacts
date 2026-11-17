@@ -93,7 +93,16 @@ list-details form, a menu item and maintain security"). It calls the tool with s
 
 On failure the result names the failing task, d365fo's error and hint, and whether the rollback
 succeeded. If the d365fo journal shows writes that are not from the batch (for example you ran
-`d365fo` by hand at the same moment), nothing is undone and the written files are listed instead.
+`d365fo` by hand between two of its steps), nothing is undone and the written files are listed instead.
+`rolled_back: true` means every file the batch created is gone; files d365fo could not undo (for
+example a label file's `.label.txt`, which d365fo does not journal) are listed under `left_behind`.
+
+Known limits:
+- `add-to`, `into-role` and `out-*` options are refused: d365fo writes them without a journal entry.
+- `table-relation` and `find-methods` only change tables of the model being written; use an
+  `extension` task for other models' tables.
+- A `d365fo` write to the same model by another process at the exact moment one of the batch's own
+  commands runs cannot be told apart from that command's writes, and would be undone with the batch.
 
 ## Dev VM checklist
 

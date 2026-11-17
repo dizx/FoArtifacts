@@ -38,17 +38,15 @@ public static class RollbackPlanner
 {
     /// <summary>
     /// Decides whether the entries written since <paramref name="anchorId"/> can be undone as a unit.
-    /// They can only when every one is this batch's: same model, and a name containing one of the
-    /// batch's names (commands journal derived names such as CustTable_Extension) or a target a task
-    /// reported writing.
+    /// They can only when every one of them is a write this batch made — a journal id that appeared while
+    /// one of its commands ran, in the batch's model — and every write the batch made is still in the journal.
     /// </summary>
     public static RollbackDecision Decide(
         string? anchorId,
         IReadOnlyList<JournalEntry> newestFirst,
         int limit,
         string model,
-        IReadOnlyCollection<string> touchNames,
-        IReadOnlyCollection<string> reportedPaths)
+        IReadOnlyCollection<string> ownedIds)
     {
         var newer = new List<JournalEntry>();
         var anchorFound = anchorId is null;
@@ -69,19 +67,22 @@ public static class RollbackPlanner
             return new RollbackDecision(false, newer,
                 $"The journal was empty before the batch but now has at least {limit} entries, so it is unclear which writes belong to this batch.");
 
-        var paths = new HashSet<string>(reportedPaths, StringComparer.OrdinalIgnoreCase);
-        var foreign = newer.Where(e => !Owned(e, model, touchNames, paths)).ToList();
+        var owned = new HashSet<string>(ownedIds, StringComparer.Ordinal);
+        var foreign = newer
+            .Where(e => !owned.Contains(e.Id) || !string.Equals(e.Model, model, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         if (foreign.Count > 0)
             return new RollbackDecision(false, newer,
                 "The journal contains writes that are not from this batch: "
                 + string.Join(", ", foreign.Select(e => $"{e.Kind} {e.Name} ({e.Model})"))
-                + ". Nothing was undone, so those writes are kept.");
+                + ". Undoing would remove them too, so nothing was undone.");
+
+        var missing = owned.Count(id => newer.All(e => e.Id != id));
+        if (missing > 0)
+            return new RollbackDecision(false, newer,
+                $"{missing} write(s) of this batch are no longer in the d365fo journal (it keeps at most D365FO_JOURNAL_MAX_ENTRIES entries), "
+                + "so they cannot be undone. Nothing was undone.");
 
         return new RollbackDecision(true, newer, null);
     }
-
-    private static bool Owned(JournalEntry e, string model, IReadOnlyCollection<string> touchNames, HashSet<string> paths) =>
-        string.Equals(e.Model, model, StringComparison.OrdinalIgnoreCase)
-        && (touchNames.Any(t => t.Length > 0 && e.Name.Contains(t, StringComparison.OrdinalIgnoreCase))
-            || (e.Target.Length > 0 && paths.Contains(e.Target)));
 }

@@ -17,12 +17,7 @@ public sealed record ExpandedTask(
     public string Label => $"{Type} {Name}";
 }
 
-public sealed record ExpandedBatch(string Model, string Prefix, bool DryRun, IReadOnlyList<ExpandedTask> Tasks)
-{
-    /// <summary>Names a journal entry written by this batch is expected to contain.</summary>
-    public IReadOnlyCollection<string> TouchNames =>
-        Tasks.SelectMany(t => t.DefinedNames.Append(t.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-}
+public sealed record ExpandedBatch(string Model, string Prefix, bool DryRun, IReadOnlyList<ExpandedTask> Tasks);
 
 public static class NameExpander
 {
@@ -50,7 +45,11 @@ public static class NameExpander
                     errors.Add($"'{expanded}' is defined twice: {labels[clash.Task]} and {task.Label}.");
             }
             var symbol = new Symbol(expanded, kinds, task.Index);
-            foreach (var key in new[] { name, expanded }.Distinct(StringComparer.OrdinalIgnoreCase))
+            // A name given already prefixed ("CFltVehicle") must also catch bare references ("Vehicle").
+            var bare = batch.Prefix.Length > 0 && expanded.Length > batch.Prefix.Length
+                ? expanded[batch.Prefix.Length..]
+                : expanded;
+            foreach (var key in new[] { name, expanded, bare }.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (!symbols.TryGetValue(key, out var list)) symbols[key] = list = [];
                 list.Add(symbol);

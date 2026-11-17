@@ -24,9 +24,13 @@
     "query": { "rank": 40, "name": { "role": "define", "kinds": ["query"] }, "produces": ["query"],
       "refs": [
         { "option": "ds", "kinds": ["table", "view"] },
-        { "option": "join", "split": ":", "segment": 0, "kinds": ["table", "view"] } ] },
+        { "option": "join", "split": ":", "segment": 0, "kinds": ["table", "view"] },
+        { "option": "join", "split": ":", "segment": 2, "kinds": ["table", "view"] } ] },
     "view": { "rank": 45, "name": { "role": "define", "kinds": ["view"] }, "produces": ["view"],
-      "refs": [ { "option": "query", "kinds": ["query"] }, { "option": "configuration-key", "kinds": ["configuration-key"] } ] },
+      "refs": [
+        { "option": "query", "kinds": ["query"] },
+        { "option": "field", "split": ":", "segment": 1, "kinds": ["table", "view"] },
+        { "option": "configuration-key", "kinds": ["configuration-key"] } ] },
     "class": { "rank": 50, "name": { "role": "define", "kinds": ["class"] }, "produces": ["class"],
       "refs": [ { "option": "extends", "kinds": ["class"] } ] },
     "coc": { "rank": 60, "name": { "role": "reference", "kinds": ["*"] }, "produces": ["class"] },

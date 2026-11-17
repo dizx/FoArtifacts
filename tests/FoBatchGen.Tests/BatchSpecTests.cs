@@ -56,6 +56,10 @@ public class BatchSpecTests
     [InlineData("output")]
     [InlineData("overwrite")]
     [InlineData("no-refresh")]
+    [InlineData("add-to")]
+    [InlineData("into-role")]
+    [InlineData("out-contract")]
+    [InlineData("out-staging")]
     public void Reserved_options_are_rejected(string option)
     {
         var (_, errors) = Check("M", "", T("table", "Vehicle", $$"""{"{{option}}":"x"}"""));

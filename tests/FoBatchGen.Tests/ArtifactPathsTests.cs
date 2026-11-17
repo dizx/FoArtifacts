@@ -20,5 +20,18 @@ public class ArtifactPathsTests
     }
 
     [Fact]
+    public void Includes_label_content_files_but_not_other_content()
+    {
+        // Shape of `generate label-file` output: the .label.txt is reported under "content".
+        using var doc = JsonDocument.Parse("""
+            {"path":"/m/AxLabelFile/L_en-US.xml","content":"/m/AxLabelFile/LabelResources/en-US/L.en-US.label.txt",
+             "method":{"content":"public void run() {}"}}
+            """);
+        Assert.Equal(
+            new[] { "/m/AxLabelFile/L_en-US.xml", "/m/AxLabelFile/LabelResources/en-US/L.en-US.label.txt" },
+            ArtifactPaths.From(doc.RootElement));
+    }
+
+    [Fact]
     public void Missing_data_has_no_paths() => Assert.Empty(ArtifactPaths.From(default));
 }

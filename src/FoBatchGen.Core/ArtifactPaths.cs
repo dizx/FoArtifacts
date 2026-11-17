@@ -4,13 +4,19 @@ namespace FoBatchGen.Core;
 
 public static class ArtifactPaths
 {
-    /// <summary>Every string under a property named <c>path</c>, at any depth of a d365fo result.</summary>
+    /// <summary>
+    /// Every string under a property named <c>path</c>, at any depth of a d365fo result, plus rooted file
+    /// paths under <c>content</c> (where <c>generate label-file</c> reports its .label.txt).
+    /// </summary>
     public static IReadOnlyList<string> From(JsonElement data)
     {
         var found = new List<string>();
         Walk(data, found);
         return found.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    private static bool IsFilePath(string value) =>
+        Path.IsPathRooted(value) && value.IndexOfAny(['\n', '{', ';']) < 0;
 
     private static void Walk(JsonElement element, List<string> found)
     {
@@ -20,6 +26,9 @@ public static class ArtifactPaths
                 foreach (var property in element.EnumerateObject())
                 {
                     if (property.NameEquals("path") && property.Value.ValueKind == JsonValueKind.String)
+                        found.Add(property.Value.GetString()!);
+                    else if (property.NameEquals("content") && property.Value.ValueKind == JsonValueKind.String
+                             && IsFilePath(property.Value.GetString()!))
                         found.Add(property.Value.GetString()!);
                     else
                         Walk(property.Value, found);

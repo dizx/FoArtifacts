@@ -29,11 +29,18 @@ public static partial class BatchSpec
 {
     public const int MaxTasks = 500;
 
-    /// <summary>Options fo-batchgen sets itself.</summary>
+    /// <summary>
+    /// Options fo-batchgen sets itself, plus options that make d365fo write to a path of the caller's
+    /// choosing — d365fo does not journal those writes (<c>add-to</c>, <c>into-role</c>) or they land
+    /// outside the model (<c>out-*</c>), so a rollback could not undo them.
+    /// </summary>
     public static readonly IReadOnlySet<string> ReservedOptions = new HashSet<string>(StringComparer.Ordinal)
     {
-        "out", "install-to", "apply-to", "output", "overwrite", "no-refresh",
+        "out", "install-to", "apply-to", "output", "overwrite", "no-refresh", "add-to", "into-role",
     };
+
+    public static bool IsReserved(string option) =>
+        ReservedOptions.Contains(option) || option.StartsWith("out-", StringComparison.Ordinal);
 
     [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$")]
     private static partial Regex AotName();
@@ -97,7 +104,7 @@ public static partial class BatchSpec
                     errors.Add($"{where}: option '{rawKey}' is not a valid option name (lowercase, e.g. \"field\" or \"lines-table\").");
                     continue;
                 }
-                if (ReservedOptions.Contains(key))
+                if (IsReserved(key))
                 {
                     errors.Add($"{where}: option '{key}' is set by fo-batchgen and cannot be given.");
                     continue;
