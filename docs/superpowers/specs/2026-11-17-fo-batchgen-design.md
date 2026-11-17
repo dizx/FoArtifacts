@@ -106,7 +106,15 @@ Input:
 - `dry_run` (optional, default false).
 - `tasks` (required, 1–500). Each task:
   - `type`: one of the 41 supported subcommands.
-  - `name`: bare name; becomes the command's positional argument after prefixing.
+  - `name`: the command's main positional argument. What it means depends on the subcommand
+    (declared in `ReferenceMap`, see 4.2):
+    - *define* (most commands): the new object's bare name; it is prefixed.
+    - *reference* (`table-relation`, `find-methods`, `coc`, `datasource-method`, `control-method`,
+      `extension`): an existing object the command changes; rewritten only if it names an object
+      defined in the same batch, otherwise passed unchanged.
+    - *literal* (`report-extension` pattern, `label-file` id): passed unchanged.
+  - For `extension`, `options.kind` (Table, Form, …) is required and is passed as the positional
+    argument before `name`.
   - `options`: map of option name (without `--`) to a string, number, boolean or array of
     strings/numbers. An array repeats the option. `true` emits a bare flag; `false` omits it.
 
@@ -142,8 +150,8 @@ rollback result (`rolled_back: true` with the reverted count, or the list of fil
 | Unit | Responsibility | Depends on |
 |---|---|---|
 | `BatchSpec` | Parse and validate input: required fields, known `type`, option value shapes, reserved options, 1–500 tasks, no duplicate (kind, name). Collects all errors, not just the first. | — |
-| `ReferenceMap` | Data file (embedded JSON) declaring, per subcommand, which options — or which `:`-separated segment of an option value — name another object, and the object kind(s) referenced. Has an entry for every supported subcommand (an empty list means "no object references"). | — |
-| `NameExpander` | Prefix task names (not when the name already starts with the prefix). Rewrite referenced names: only positions declared in `ReferenceMap`, only when the value exactly matches (case-insensitive) a bare name defined in the batch. Everything else passes through unchanged (standard objects such as `VIN`, `SysGroup`, `CustAccount`; field names; captions). | `ReferenceMap` |
+| `ReferenceMap` | Data file (embedded JSON) declaring, per subcommand: the role of `name` (define/reference/literal) and its kinds; leading positionals taken from options; the kinds of object it produces; options that **define** further new objects (e.g. `sysoperation --contract-name`, `report --dp`), which are prefixed like names; and reference positions — which options, or which segment of a `:`/`=`/`/`-separated value, name another object, with the kinds referenced. A tie-break rank. Has an entry for every supported subcommand. | — |
+| `NameExpander` | Prefix defined names — task names with role *define* and values of defining options — unless they already start with the prefix. Rewrite referenced names: only positions declared in `ReferenceMap`, only when the value exactly matches (case-insensitive) a name defined in the batch whose kind fits the reference. Everything else passes through unchanged (standard objects such as `VIN`, `SysGroup`, `CustAccount`; field names; captions). Rejects two definitions of the same name with overlapping kinds. | `ReferenceMap` |
 | `Planner` | Dependency edge from task A to task B when A references B's name with a kind B satisfies. Assign stages by longest dependency path; order within a stage by a fixed type rank for deterministic output. Reject cycles, naming the tasks involved. | `ReferenceMap` |
 | `D365foRunner` | Run `d365fo` with an argument list (no shell), per-call timeout (default 120 s, `FO_BATCHGEN_TIMEOUT_SECONDS`), parse the `{ ok, data, warnings, error }` envelope. Treat non-JSON output, non-zero exit without an envelope, or timeout as failure. | — |
 | `BatchExecutor` | Preflight, anchor, run stages, refresh, roll back. See 4.3. | Runner, Planner |
@@ -157,18 +165,22 @@ maps the tool call to `BatchExecutor`.
 1. **Validate** with `BatchSpec`; expand with `NameExpander`; plan with `Planner`. Any error →
    return all errors, nothing written. `dry_run` stops here and returns the plan.
 2. **Preflight**: `d365fo` is runnable; `models list` contains `model` (warn if it is not marked
-   custom). Failure → return error, nothing written.
+   custom). This check is needed because `index refresh --model <unknown>` reports success.
+   Failure → return error, nothing written.
 3. **Lock**: one batch at a time per server process (`SemaphoreSlim(1)`).
-4. **Anchor**: `journal list`; remember the newest entry id (or none).
+4. **Anchor**: `journal list -n 1`; remember the newest entry id (or none). The journal is a stack,
+   most recent first; `undo --steps N` pops the newest N entries.
 5. **Run** each stage in order; within a stage, tasks run sequentially. After each stage, including
    the last, run `index refresh --model <model>`.
 6. **On any failure** (task `ok:false`, refresh failure, timeout, crash):
-   1. `journal list`; take the entries newer than the anchor.
-   2. Check that each of those entries is a write from this batch: its `model` equals `model` and its
-      `name` equals (case-insensitive) an expanded task name in the batch. Kind is not compared,
-      because journal kinds (`MenuItemDisplay`, `Table`) differ from task types and one command can
-      journal several kinds. If any entry is not ours, do **not** undo; report the failure plus the
-      files written.
+   1. `journal list -n 2000`; take the entries above the anchor. If the anchor is not in the list,
+      do **not** undo (report and list the files written).
+   2. Check that each of those entries is a write from this batch: its `model` equals `model`
+      (case-insensitive) and its `name` contains (case-insensitive) one of the batch's names — the
+      expanded defined names and the reference-role `name`s. Containment rather than equality,
+      because commands journal derived names (`coc` → `CustTable_Extension`, `extension` →
+      `CustTable.<suffix>`, `report` → `<Name>DP`). Kind is not compared. If any entry is not ours,
+      do **not** undo; report the failure plus the files written.
    3. Otherwise `undo --steps <count of those entries>`, then `index refresh --model <model>`.
    4. If undo fails, report it plainly with the list of files that may remain.
 7. **Return** the summary.
@@ -183,10 +195,12 @@ Examples:
 | `table` | `field` segment 2 → edt, enum; `configuration-key` → configuration-key |
 | `edt` | `extends` → edt; `enum-type` → enum |
 | `form` | `table`, `lines-table` → table/view |
-| `menu-item` | `object` → form/class/report/query (by `object-type`); `config-key` → configuration-key |
+| `menu-item` | `object` → form/class/report/query; `config-key` → configuration-key |
 | `privilege` | `entry-point` → menu-item/service |
 | `duty` | `privilege` → privilege |
-| `role` | `duty` → duty; `privilege` → privilege |
+| `role` | `duty` → duty; `privilege` → privilege; `sub-role` → role |
+| `sysoperation` | defines `contract-name`, `service-name`, `controller-name` (class); `param` segment 2 → edt/enum |
+| `extension` | name is a reference (any kind); leading positional from `options.kind`; `field` segment 2 → edt/enum; `item` last `/` part of segment 1 → menu-item |
 
 A unit test fails if `ReferenceMap` and the list of `d365fo` generate subcommands (kept in a
 checked-in list taken from `CliApp.cs` at the pinned commit) disagree.
