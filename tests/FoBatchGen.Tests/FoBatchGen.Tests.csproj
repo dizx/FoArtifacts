@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/FoBatchGen.Core/FoBatchGen.Core.csproj" />
+    <ProjectReference Include="../../src/FoBatchGen/FoBatchGen.csproj" />
   </ItemGroup>
 </Project>

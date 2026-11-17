@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/FoBatchGen.Core/FoBatchGen.Core.csproj" />
+    <Project Path="src/FoBatchGen/FoBatchGen.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FoBatchGen.Tests/FoBatchGen.Tests.csproj" />
