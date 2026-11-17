@@ -118,8 +118,17 @@ Input:
   - `options`: map of option name (without `--`) to a string, number, boolean or array of
     strings/numbers. An array repeats the option. `true` emits a bare flag; `false` omits it.
 
-The server always adds `--install-to <model> --no-refresh --output json`. Tasks may not set
-`out`, `install-to`, `output` or `overwrite`; those are rejected.
+The server always adds `--no-refresh --output json`, and says where to write:
+
+- most subcommands: `--install-to <model>`;
+- `table-relation` and `find-methods`, which refuse `--install-to` and edit an existing table file:
+  `--apply-to <path>`, where the path is taken from the batch task that created the table, or else
+  from `d365fo get table <name>` (`data.table.sourcePath`). A table that cannot be found fails the
+  task (and so the batch).
+
+Tasks may not set `out`, `install-to`, `apply-to`, `output`, `overwrite` or `no-refresh`; those are
+rejected. Creating an object that already exists fails in `d365fo` (`WRITE_FAILED`), which rolls the
+batch back.
 
 The tool description lists the supported types and points the agent at `d365fo generate <type> --help`
 (run in a terminal) or the d365fo docs for each type's options.
@@ -240,6 +249,8 @@ checked-in list taken from `CliApp.cs` at the pinned commit) disagree.
 
 - **Refresh time on a large real model** is unmeasured; the spike model was tiny. If it is slow,
   a later version can refresh only when the next stage references something from the current one.
+- **Form method commands need the bridge**: `datasource-method` and `control-method` change a form
+  only through the metadata bridge, so they work on the dev VM but cannot be tested on Linux.
 - **Undo of update-style commands** (`datasource-method`, `control-method`, `table-relation`,
   `find-methods`, `extension`, which modify existing objects) is assumed to restore the previous file
   via the journal; the integration smoke tests must confirm it for each.
