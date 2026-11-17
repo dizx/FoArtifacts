@@ -4,6 +4,7 @@
     <Project Path="src/FoBatchGen/FoBatchGen.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/FoBatchGen.IntegrationTests/FoBatchGen.IntegrationTests.csproj" />
     <Project Path="tests/FoBatchGen.Tests/FoBatchGen.Tests.csproj" />
   </Folder>
 </Solution>
