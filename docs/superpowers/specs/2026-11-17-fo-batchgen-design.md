@@ -1,0 +1,235 @@
+# fo-batchgen — design
+
+Date: 2026-11-17
+Status: draft for review
+
+## 1. Purpose
+
+A personal MCP tool for D365 Finance & Operations development. One call, `generate_fo_artifacts`,
+takes a whole feature described as typed tasks (enums, EDTs, tables, forms, menu items, security,
+entities, …) and writes every artifact into a model — in dependency order, with the model prefix
+applied, all-or-nothing.
+
+It is inspired by xplusplus.ai's `generate_fo_artifacts`, but it does not generate XML itself.
+It orchestrates the open-source `d365fo` CLI (github.com/dynamics365ninja/d365fo-cli), which
+already has the per-object generators, the metadata index, the form-pattern gate and an undo
+journal. What `d365fo` lacks, and this tool adds, is the batch layer:
+
+- one call for many artifacts,
+- automatic prefixing of bare names, including references between artifacts in the batch,
+- dependency ordering, with the index refreshed between stages so later artifacts see earlier ones,
+- full rollback when any step fails,
+- one compact summary instead of one response per object.
+
+**User:** the author, on their own D365 dev VM, driven by an AI coding agent (Claude Code, Copilot,
+Cursor, …). Not a product: no API keys, plans, billing or hosting.
+
+**Success:** a feature batch (e.g. enum + EDT + table + form + menu item + privilege + duty + role)
+from one call lands in the model, builds in Visual Studio without hand-fixing, and every
+artifact is findable with `d365fo search`/`get` afterwards.
+
+## 2. Evidence from the feasibility spike (2026-11-16)
+
+Run against `d365fo` at commit `640406b357b5fc9bc33ba499c8ec325c5b8a5c5f`, on Linux, using the
+repo's `tests/Samples/MiniAot` model registered as custom (`D365FO_CUSTOM_MODELS`), bridge disabled.
+
+- Reads of existing custom elements work: `search`, `get table|edt|enum|form`, `models list`.
+- An 8-object batch (enum, EDT, table, form, display menu item, privilege, duty, role) generated with
+  `--install-to <model> --no-refresh` plus `index refresh --model <model>` after each stage:
+  all `ok`, enum field typed `AxTableFieldEnum`, form passes `form-pattern validate` (0/0),
+  `security coverage` resolves role → duty → privilege → menu item. 7.7 s total, ~0.5 s per refresh.
+- **Without** the refresh between stages, an enum-typed field is written as an EDT string field
+  (`EDT_BASETYPE_UNRESOLVED`) and the form warns its table is unknown. The refresh is mandatory.
+- `d365fo undo --steps N` reverted every write and deleted the files. The journal recorded 9 entries
+  for 8 tasks (a command can journal more than one write), so rollback cannot count tasks.
+- `d365fo <cmd> --help` prints nothing useful when stdout is piped, so options cannot be discovered
+  from help at runtime.
+- `search any` does not return security objects; `security role|duty|privilege|coverage` does.
+- `d365fo` registers 42 `generate` subcommands (its README says 43); `simple-list` is a deprecated
+  alias of `form`.
+
+## 3. Scope
+
+In scope:
+
+- An MCP server (stdio) exposing one tool, `generate_fo_artifacts`.
+- All 41 non-deprecated `d365fo generate` subcommands as task types.
+- Dry run (plan without writing).
+
+Out of scope: building, DB sync, deployment packages, label translation, editing existing objects
+outside what a `generate` subcommand does, multi-user/shared hosting, its own XML templates.
+
+## 4. Architecture
+
+A .NET 10 C# solution (the same runtime `d365fo` already needs on the VM):
+
+```
+fo-batchgen/
+  src/FoBatchGen.Core/        logic, no MCP dependency
+  src/FoBatchGen/             MCP server host (console app, stdio)
+  tests/FoBatchGen.Tests/              unit tests
+  tests/FoBatchGen.IntegrationTests/   runs the real d365fo against a fixture model
+```
+
+`d365fo` is located by the `D365FO_CLI` environment variable (path to the executable), else `d365fo`
+on `PATH`. The server passes its own environment through, so `D365FO_PACKAGES_PATH`,
+`D365FO_CUSTOM_MODELS`, `D365FO_INDEX_DB`, `D365FO_BRIDGE_ENABLED`, etc. are configured once in the
+MCP client config.
+
+### 4.1 Tool contract
+
+Input:
+
+```json
+{
+  "model": "ContosoFleet",
+  "prefix": "CFlt",
+  "dry_run": false,
+  "tasks": [
+    { "type": "enum",  "name": "VehicleStatus", "options": { "value": ["Active:0", "Retired:1"] } },
+    { "type": "edt",   "name": "VehicleId",     "options": { "base-type": "String", "size": 20 } },
+    { "type": "table", "name": "Vehicle",       "options": { "pattern": "main",
+        "field": ["VehicleId:VehicleId:mandatory", "Status:VehicleStatus", "Vin:VIN"] } },
+    { "type": "form",  "name": "Vehicle",       "options": { "pattern": "SimpleListDetails",
+        "table": "Vehicle", "field": ["VehicleId", "Status"] } },
+    { "type": "menu-item", "name": "Vehicle",   "options": { "kind": "Display", "object": "Vehicle" } },
+    { "type": "privilege", "name": "VehicleMaintain",
+        "options": { "entry-point": "Vehicle", "entry-kind": "MenuItemDisplay", "access": "Delete" } },
+    { "type": "duty",  "name": "VehicleMaintain", "options": { "privilege": "VehicleMaintain" } },
+    { "type": "role",  "name": "VehicleManager",  "options": { "duty": "VehicleMaintain" } }
+  ]
+}
+```
+
+- `model` (required): target model name, passed as `--install-to`.
+- `prefix` (required, may be empty string to disable prefixing).
+- `dry_run` (optional, default false).
+- `tasks` (required, 1–500). Each task:
+  - `type`: one of the 41 supported subcommands.
+  - `name`: bare name; becomes the command's positional argument after prefixing.
+  - `options`: map of option name (without `--`) to a string, number, boolean or array of
+    strings/numbers. An array repeats the option. `true` emits a bare flag; `false` omits it.
+
+The server always adds `--install-to <model> --no-refresh --output json`. Tasks may not set
+`out`, `install-to`, `output` or `overwrite`; those are rejected.
+
+The tool description lists the supported types and points the agent at `d365fo generate <type> --help`
+(run in a terminal) or the d365fo docs for each type's options.
+
+Output (success): a short JSON summary —
+
+```json
+{
+  "ok": true,
+  "model": "ContosoFleet",
+  "stages": 6,
+  "elapsed_ms": 7700,
+  "artifacts": [ { "type": "table", "name": "CFltVehicle", "path": "…/AxTable/CFltVehicle.xml" } ],
+  "warnings": [ { "task": "privilege CFltVehicleMaintain", "message": "…" } ]
+}
+```
+
+Warnings from `d365fo` are passed through, except the "bridge is not available" warning, which is
+collapsed into one line when present.
+
+Output (failure): `ok: false`, the failing task, `d365fo`'s error code/message/hint, and the
+rollback result (`rolled_back: true` with the reverted count, or the list of files left behind).
+
+`dry_run: true` returns the expanded names, the stages, and the exact command lines, and writes nothing.
+
+### 4.2 Components (in FoBatchGen.Core)
+
+| Unit | Responsibility | Depends on |
+|---|---|---|
+| `BatchSpec` | Parse and validate input: required fields, known `type`, option value shapes, reserved options, 1–500 tasks, no duplicate (kind, name). Collects all errors, not just the first. | — |
+| `ReferenceMap` | Data file (embedded JSON) declaring, per subcommand, which options — or which `:`-separated segment of an option value — name another object, and the object kind(s) referenced. Has an entry for every supported subcommand (an empty list means "no object references"). | — |
+| `NameExpander` | Prefix task names (not when the name already starts with the prefix). Rewrite referenced names: only positions declared in `ReferenceMap`, only when the value exactly matches (case-insensitive) a bare name defined in the batch. Everything else passes through unchanged (standard objects such as `VIN`, `SysGroup`, `CustAccount`; field names; captions). | `ReferenceMap` |
+| `Planner` | Dependency edge from task A to task B when A references B's name with a kind B satisfies. Assign stages by longest dependency path; order within a stage by a fixed type rank for deterministic output. Reject cycles, naming the tasks involved. | `ReferenceMap` |
+| `D365foRunner` | Run `d365fo` with an argument list (no shell), per-call timeout (default 120 s, `FO_BATCHGEN_TIMEOUT_SECONDS`), parse the `{ ok, data, warnings, error }` envelope. Treat non-JSON output, non-zero exit without an envelope, or timeout as failure. | — |
+| `BatchExecutor` | Preflight, anchor, run stages, refresh, roll back. See 4.3. | Runner, Planner |
+| `SummaryBuilder` | Build the compact result. | — |
+
+`src/FoBatchGen` hosts the MCP server with the official ModelContextProtocol C# SDK over stdio and
+maps the tool call to `BatchExecutor`.
+
+### 4.3 Execution flow
+
+1. **Validate** with `BatchSpec`; expand with `NameExpander`; plan with `Planner`. Any error →
+   return all errors, nothing written. `dry_run` stops here and returns the plan.
+2. **Preflight**: `d365fo` is runnable; `models list` contains `model` (warn if it is not marked
+   custom). Failure → return error, nothing written.
+3. **Lock**: one batch at a time per server process (`SemaphoreSlim(1)`).
+4. **Anchor**: `journal list`; remember the newest entry id (or none).
+5. **Run** each stage in order; within a stage, tasks run sequentially. After each stage, including
+   the last, run `index refresh --model <model>`.
+6. **On any failure** (task `ok:false`, refresh failure, timeout, crash):
+   1. `journal list`; take the entries newer than the anchor.
+   2. Check that each of those entries is a write from this batch: its `model` equals `model` and its
+      `name` equals (case-insensitive) an expanded task name in the batch. Kind is not compared,
+      because journal kinds (`MenuItemDisplay`, `Table`) differ from task types and one command can
+      journal several kinds. If any entry is not ours, do **not** undo; report the failure plus the
+      files written.
+   3. Otherwise `undo --steps <count of those entries>`, then `index refresh --model <model>`.
+   4. If undo fails, report it plainly with the list of files that may remain.
+7. **Return** the summary.
+
+## 5. ReferenceMap coverage
+
+Every one of the 41 subcommands gets an entry, written from the d365fo source at the pinned commit.
+Examples:
+
+| Subcommand | Reference positions → kinds |
+|---|---|
+| `table` | `field` segment 2 → edt, enum; `configuration-key` → configuration-key |
+| `edt` | `extends` → edt; `enum-type` → enum |
+| `form` | `table`, `lines-table` → table/view |
+| `menu-item` | `object` → form/class/report/query (by `object-type`); `config-key` → configuration-key |
+| `privilege` | `entry-point` → menu-item/service |
+| `duty` | `privilege` → privilege |
+| `role` | `duty` → duty; `privilege` → privilege |
+
+A unit test fails if `ReferenceMap` and the list of `d365fo` generate subcommands (kept in a
+checked-in list taken from `CliApp.cs` at the pinned commit) disagree.
+
+## 6. Error handling summary
+
+| Situation | Result |
+|---|---|
+| Invalid spec, unknown type, reserved option, cycle | All errors returned; nothing written |
+| `d365fo` missing, no index, model not found | Preflight error; nothing written |
+| Task fails / refresh fails / timeout | Full rollback via journal; failing task + `d365fo` error returned |
+| Journal has entries not from this batch | No undo; failure + written-file list returned |
+| Undo fails | Reported with possibly-remaining files |
+| Unknown option name for a subcommand | `d365fo` rejects it → normal rollback path |
+
+## 7. Testing
+
+- **Unit (xUnit)**: `BatchSpec` validation; `NameExpander` (prefixing, no double prefix, standard names
+  untouched, field-name segment untouched, case-insensitive match); `Planner` (stages, rank order,
+  cycle detection); `ReferenceMap` completeness; `D365foRunner` envelope parsing with canned output;
+  rollback decision logic with a fake runner.
+- **Integration**: build `d365fo` at the pinned commit; point `D365FO_CLI` at it; copy a fixture model
+  (the MIT-licensed MiniAot sample, vendored with attribution) to a temp packages folder; build the
+  index. Cases:
+  - the Vehicle batch from 4.1 succeeds, enum field is `AxTableFieldEnum`, `security coverage`
+    resolves the chain, all artifacts found via `get`;
+  - standard and existing names (`VIN`) are not prefixed;
+  - an unknown option in the last task rolls back everything and leaves no files;
+  - `dry_run` writes nothing and the journal is unchanged;
+  - one smoke task per subcommand that runs without the metadata bridge; subcommands that cannot run
+    on Linux are listed in the test file with the reason.
+  Integration tests are skipped when `D365FO_CLI` is not set.
+- **Manual, on the dev VM** (checklist in the README): bridge enabled, time `index refresh --model`
+  on the real custom model, run the Vehicle batch, build in Visual Studio.
+
+## 8. Risks and assumptions
+
+- **Refresh time on a large real model** is unmeasured; the spike model was tiny. If it is slow,
+  a later version can refresh only when the next stage references something from the current one.
+- **Undo of update-style commands** (`datasource-method`, `control-method`, `table-relation`,
+  `find-methods`, `extension`, which modify existing objects) is assumed to restore the previous file
+  via the journal; the integration smoke tests must confirm it for each.
+- **CLI drift**: options and journal format are those of the pinned commit. Upgrading `d365fo` means
+  re-running the integration tests and updating `ReferenceMap`.
+- **Concurrent writes**: other `d365fo` writes during a batch are detected at rollback time (6.2) but
+  not prevented.
