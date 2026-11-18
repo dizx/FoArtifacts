@@ -27,6 +27,22 @@ public class BatchExecutorTests
         a => a[0] == "generate" && a[1] == type ? FakeD365fo.Fail(code, $"{type} failed") : null;
 
     [Fact]
+    public async Task A_batch_waits_for_the_shared_model_lock()
+    {
+        var fake = new FakeD365fo();
+        var gate = new ModelLock();
+        var executor = new BatchExecutor(fake, Map, gate);
+        var held = await gate.AcquireAsync(Ct);
+
+        var run = executor.RunAsync(Vehicle(), Ct);
+        await Task.Delay(50, Ct);
+        Assert.Empty(fake.Calls);
+
+        held.Dispose();
+        Assert.True((await run).Ok);
+    }
+
+    [Fact]
     public async Task Runs_stage_by_stage_and_refreshes_after_each_stage()
     {
         var (fake, executor) = Make();

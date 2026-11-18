@@ -21,11 +21,12 @@ public sealed record BatchResult(
     RollbackReport? Rollback,
     long ElapsedMs);
 
-public sealed class BatchExecutor(ID365fo cli, ReferenceMap map)
+public sealed class BatchExecutor(ID365fo cli, ReferenceMap map, ModelLock? modelLock = null)
 {
     public const int JournalLimit = 2000;
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ModelLock _lock = modelLock ?? new ModelLock();
+    private readonly ModelCheck _check = new(cli);
 
     public static IReadOnlyList<string> RefreshArgs(string model) =>
         ["index", "refresh", "--model", model, "--output", "json"];
@@ -42,15 +43,8 @@ public sealed class BatchExecutor(ID365fo cli, ReferenceMap map)
         if (expanded.DryRun)
             return new BatchResult(true, true, expanded.Model, [], [], stages, [], null, null, clock.ElapsedMilliseconds);
 
-        await _gate.WaitAsync(ct);
-        try
-        {
+        using (await _lock.AcquireAsync(ct))
             return await ExecuteAsync(expanded, stages, clock, ct);
-        }
-        finally
-        {
-            _gate.Release();
-        }
     }
 
     private static BatchResult Rejected(BatchRequest request, IReadOnlyList<string> errors, Stopwatch clock) =>
@@ -187,28 +181,10 @@ public sealed class BatchExecutor(ID365fo cli, ReferenceMap map)
 
     private async Task<string?> PreflightAsync(string model, List<string> warnings, CancellationToken ct)
     {
-        var models = await cli.RunAsync(["models", "list", "--output", "json"], ct);
-        if (!models.Ok)
-            return $"d365fo is not usable: {models.ErrorCode}: {models.ErrorMessage}"
-                + (models.ErrorHint is null ? "" : $" Hint: {models.ErrorHint}");
-
-        var items = new List<JsonElement>();
-        if (models.Data.ValueKind == JsonValueKind.Object
-            && models.Data.TryGetProperty("items", out var array)
-            && array.ValueKind == JsonValueKind.Array)
-            items.AddRange(array.EnumerateArray());
-
-        var match = items.FirstOrDefault(i => string.Equals(Str(i, "name"), model, StringComparison.OrdinalIgnoreCase));
-        if (match.ValueKind == JsonValueKind.Undefined)
-        {
-            var known = items.Select(i => Str(i, "name")).Where(n => n is not null).Take(20);
-            return $"Model '{model}' is not in the d365fo index. Known models: {string.Join(", ", known)}. "
-                + $"Check the name. If the model is new, run `d365fo index refresh --model {model}`; "
-                + "d365fo skips an empty model (one with no Ax* folder such as AxClass yet), so create one "
-                + "empty Ax* folder in the model folder first.";
-        }
-        if (!(match.TryGetProperty("isCustom", out var custom) && custom.ValueKind == JsonValueKind.True))
-            warnings.Add($"Model '{model}' is not marked as custom in d365fo. Add it to D365FO_CUSTOM_MODELS.");
+        var (info, error) = await _check.LookUpAsync(model, ct);
+        if (error is not null) return error;
+        if (!info!.Found) return ModelCheck.NotIndexed(model, info.Known);
+        if (!info.IsCustom) warnings.Add(ModelCheck.NotCustom(model));
         return null;
     }
 
