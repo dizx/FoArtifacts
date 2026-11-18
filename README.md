@@ -14,7 +14,11 @@ It does not generate XML itself. It drives [d365fo-cli](https://github.com/dynam
 
 - .NET 10 SDK
 - `d365fo` installed and indexed (`d365fo index build`, `d365fo index extract`), with your models
-  listed in `D365FO_CUSTOM_MODELS`. Tested against d365fo commit `7b37a250ada8d36688123961dea6a84e451d9333`.
+  listed in `D365FO_CUSTOM_MODELS`. Tested against commit `c1761561269709657484e596a5c3d378ba9a5b18`
+  of the fork [dizx/d365fo-cli](https://github.com/dizx/d365fo-cli): upstream `7b37a25` plus two fixes
+  for writes through the bridge (forms were saved with empty tab pages, and bridge writes reported no
+  file path). Build it with `scripts/build-d365fo.*`; an upstream build without those fixes breaks
+  forms when the bridge is on.
 - On the dev VM: `D365FO_BRIDGE_ENABLED=1`, so files are written through the Metadata API and
   `datasource-method` / `control-method` work.
 

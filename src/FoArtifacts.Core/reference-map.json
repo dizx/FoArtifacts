@@ -1,5 +1,5 @@
 {
-  "d365foCommit": "7b37a250ada8d36688123961dea6a84e451d9333",
+  "d365foCommit": "c1761561269709657484e596a5c3d378ba9a5b18",
   "commands": {
     "configuration-key": { "rank": 0, "name": { "role": "define", "kinds": ["configuration-key"] }, "produces": ["configuration-key"],
       "refs": [ { "option": "parent-key", "kinds": ["configuration-key"] } ] },
