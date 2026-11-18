@@ -5,7 +5,13 @@ a whole feature — enums, EDTs, tables, forms, menu items, security, entities a
 
 - bare names get your model prefix, and so do references between objects in the same batch;
 - tasks run in dependency order, with the index refreshed between stages;
-- if any task fails, every write of the batch is undone.
+- if any task fails, every write of the batch is undone;
+- with `build: true`, the model is compiled after a successful batch and the compiler errors come back,
+  marked `in_batch` when they are in objects the batch wrote. A failed build does not undo the batch.
+
+Two more tools work without a batch: `build_model` compiles a custom model, and `refresh_index`
+re-reads one model into the d365fo index after changes made outside fo-artifacts (a git pull, edits
+in Visual Studio).
 
 It does not generate XML itself. It drives [d365fo-cli](https://github.com/dynamics365ninja/d365fo-cli)
 (`d365fo`), which does the per-object generation and keeps the undo journal.
@@ -36,6 +42,10 @@ The server reads the same environment variables as `d365fo`, plus:
 |---|---|---|
 | `D365FO_CLI` | Full path of the `d365fo` executable | `d365fo` on `PATH` |
 | `FO_ARTIFACTS_TIMEOUT_SECONDS` | Time limit for each `d365fo` call | `120` |
+| `FO_ARTIFACTS_BUILD_TIMEOUT_SECONDS` | Time limit for `d365fo build` | `900` |
+
+A build of a large model can take minutes. Your AI client's own limit for one tool call must be
+longer than the build limit, or the client gives up while the build is still running.
 
 Claude Code (`.mcp.json` in your X++ repo):
 ```json
@@ -94,6 +104,9 @@ list-details form, a menu item and maintain security"). It calls the tool with s
 - `extension` needs `options.kind` (Table, Form, …): it is passed before the name.
 - `table-relation` and `find-methods` edit an existing table; fo-artifacts finds its file.
 - `dry_run: true` returns the stages and exact `d365fo` commands without writing.
+- `build: true` compiles the model after the batch. The result's `build` section has `succeeded`, the
+  full `error_count` / `warning_count`, at most 50 errors (those in the batch's objects first) and up
+  to 20 warnings in the batch's objects, and the path of xppc's log. A dry run shows the build command.
 
 On failure the result names the failing task, d365fo's error and hint, and whether the rollback
 succeeded. If the d365fo journal shows writes that are not from the batch (for example you ran
@@ -121,6 +134,10 @@ Run once after installing, and after upgrading `d365fo`:
 6. With the bridge on, run a batch with `datasource-method` and `control-method` tasks on one of your
    forms; check the methods appear, then run the failing batch from step 5 with them in it and check
    the form is restored.
+7. Run the Vehicle batch with `build: true` and check `build.succeeded`. Then run a batch whose
+   `control-method` body does not compile, check its errors are marked `in_batch` and the batch is
+   kept, fix the method, and run `build_model` until it is clean. Edit a model file by hand and check
+   `refresh_index` reports `refreshed: true`.
 
 ## Development
 
