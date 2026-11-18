@@ -45,7 +45,8 @@ Measured on the dev VM against FoArtifactsLab (fork commit `b60ffdd`):
 - With `build: true`, after the batch succeeds, run `d365fo build --model <model> --output json` while
   still holding the batch lock, and add a `build` section to the result.
 - A failed batch is rolled back exactly as today and is not built.
-- With `dry_run: true`, the plan lists `d365fo build --model <model>` as its last step.
+- With `dry_run: true`, the result gets `"build": "d365fo build --model <model> --output json"` after
+  the plan's stages.
 - A failed build, or a build that could not run, never changes `ok`: `ok` still means "the batch was
   written". The tool description gains one sentence saying a failed build does not undo the batch.
 
@@ -60,7 +61,8 @@ custom, is refused without compiling.
 Runs `d365fo index refresh --model <model>` (with `--force` when asked), then looks the model up with
 `models list`:
 
-- model missing → `ok: false` with the existing hint (create an empty Ax* folder in the model folder);
+- model missing → `ok: false`, code `MODEL_NOT_FOUND`, with a message that the model is still not in
+  the index after the refresh and the hint to create an empty Ax* folder in the model folder;
 - model present but not custom → `ok: true` with a warning to add it to `D365FO_CUSTOM_MODELS`;
 - otherwise `ok: true`.
 
@@ -91,8 +93,9 @@ The set of object names the batch wrote or changed, compared case-insensitively 
 `object`:
 
 - every task's expanded name (for `datasource-method` and `control-method` this is the form, so their
-  errors match even though bridge updates report no path);
-- the target table of `table-relation` and `find-methods` tasks;
+  errors match even though bridge updates report no path; for `table-relation` and `find-methods` it
+  is the table they change);
+- the names a task defines through its options;
 - the file name, without `.xml`, of every path a task reported.
 
 ## Result shape
@@ -117,7 +120,10 @@ The `build` section, in the batch result and in `build_model`'s result:
 ```
 
 - `errors`: in-batch errors first, then the rest, at most 50. `error_count` is always d365fo's full count.
-- `warnings`: only in-batch warnings, at most 20. `warning_count` is the full count.
+- `warnings`: in a batch, only in-batch warnings; in `build_model` (no batch), the first warnings. At
+  most 20 either way. `warning_count` is the full count.
+- A failed build makes d365fo exit 1 with `ok: true` in its envelope; the compiler errors are read
+  from the data regardless.
 - `truncated: true` appears only when either list was cut.
 - `in_batch` is omitted in `build_model`'s result (there is no batch).
 - Null and empty fields follow `Summary`'s existing rules (nulls omitted).
