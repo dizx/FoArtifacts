@@ -54,6 +54,7 @@ public static class Summary
                 errors = b.Errors.Select(Diagnostic).ToList(),
                 warnings = b.Warnings.Select(Diagnostic).ToList(),
                 truncated = b.Truncated ? true : (bool?)null,
+                message = b.Message,
                 log = b.Log,
             };
 

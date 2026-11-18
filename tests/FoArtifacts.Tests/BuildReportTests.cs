@@ -147,6 +147,40 @@ public class BuildReportTests
     }
 
     [Fact]
+    public void A_failed_build_with_no_parsed_errors_carries_d365fos_output()
+    {
+        // LabelC failing stops d365fo before xppc: no errors, no xppc log, the reason only in `tail`.
+        var labelFailure = Envelope.Parse(1, JsonSerializer.Serialize(new
+        {
+            ok = true,
+            data = new
+            {
+                buildSucceeded = false,
+                errorCount = 0,
+                warningCount = 0,
+                errors = Array.Empty<object>(),
+                warnings = Array.Empty<object>(),
+                models = new[] { new { model = "FoArtifactsLab", xppc = (object?)null } },
+                tail = "LabelC: error: label @FAL:Missing is not defined",
+            },
+        }), "");
+
+        var report = BuildReport.From(labelFailure, Batch, 1);
+
+        Assert.False(report.Succeeded);
+        Assert.Empty(report.Errors);
+        Assert.Equal("LabelC: error: label @FAL:Missing is not defined", report.Message);
+    }
+
+    [Fact]
+    public void A_failed_build_with_parsed_errors_has_no_extra_message()
+    {
+        var report = BuildReport.From(Fixture("build-failed.json", 1), Batch, 1);
+
+        Assert.Null(report.Message);
+    }
+
+    [Fact]
     public void An_ok_result_without_buildSucceeded_is_an_error()
     {
         var report = BuildReport.From(FakeD365fo.Ok(new { something = 1 }), null, 1);

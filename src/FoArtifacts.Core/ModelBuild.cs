@@ -14,6 +14,7 @@ public sealed class ModelBuild(ID365fo buildCli, ModelCheck check)
     public async Task<BuildReport> RunAsync(string model, IReadOnlySet<string>? batchObjects, CancellationToken ct)
     {
         var clock = Stopwatch.StartNew();
+        if (!BatchSpec.IsModelName(model)) return BuildReport.Failed("BAD_INPUT", BatchSpec.BadModelName(model), null);
         try
         {
             var (info, error) = await check.LookUpAsync(model, ct);

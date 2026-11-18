@@ -18,7 +18,8 @@ public sealed record BuildReport(
     IReadOnlyList<BuildDiagnostic> Warnings,
     bool Truncated,
     string? Log,
-    ToolError? Error)
+    ToolError? Error,
+    string? Message = null)
 {
     public const int MaxErrors = 50;
     public const int MaxWarnings = 20;
@@ -66,7 +67,9 @@ public sealed record BuildReport(
             shownWarnings,
             errors.Count > MaxErrors || candidates.Count > MaxWarnings,
             LogPath(data),
-            null);
+            null,
+            // A failure before xppc (LabelC, for one) leaves no errors to read: the reason is only in d365fo's tail.
+            !succeeded.GetBoolean() && errors.Count == 0 ? Str(data, "tail") : null);
     }
 
     private static List<BuildDiagnostic> Diagnostics(JsonElement data, string name, HashSet<string>? inBatch)

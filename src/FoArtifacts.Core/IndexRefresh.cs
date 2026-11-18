@@ -20,6 +20,7 @@ public sealed class IndexRefresh(ID365fo cli, ModelCheck check)
     public async Task<RefreshReport> RunAsync(string model, bool force, CancellationToken ct)
     {
         var clock = Stopwatch.StartNew();
+        if (!BatchSpec.IsModelName(model)) return Failed(model, "BAD_INPUT", BatchSpec.BadModelName(model), null, clock);
         ct.ThrowIfCancellationRequested();
         // Like the batch's refreshes, a refresh is never cancelled once it has started.
         var result = await cli.RunAsync(Args(model, force), CancellationToken.None);

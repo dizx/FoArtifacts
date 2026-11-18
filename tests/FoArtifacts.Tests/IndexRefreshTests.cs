@@ -82,6 +82,22 @@ public class IndexRefreshTests
         Assert.DoesNotContain(fake.Calls, c => c.StartsWith("models"));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("Contoso Fleet")]
+    public async Task A_blank_or_invalid_model_name_is_refused_before_d365fo_runs(string model)
+    {
+        // d365fo treats `--model ""` as no filter and would refresh every model in the index.
+        var fake = new FakeD365fo();
+
+        var report = await Make(fake).RunAsync(model, true, Ct);
+
+        Assert.False(report.Ok);
+        Assert.Equal("BAD_INPUT", report.Error!.Code);
+        Assert.Empty(fake.Calls);
+    }
+
     [Fact]
     public async Task The_refresh_is_not_cancellable_once_started()
     {

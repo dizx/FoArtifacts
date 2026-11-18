@@ -157,6 +157,16 @@ public class SummaryTests
     }
 
     [Fact]
+    public void A_failed_build_without_errors_shows_d365fos_output()
+    {
+        var report = new BuildReport(false, 0, 0, 1, [], [], false, null, null, "LabelC: error: label not defined");
+
+        var build = JsonDocument.Parse(Summary.ToJson("ContosoFleet", report)).RootElement.GetProperty("build");
+
+        Assert.Equal("LabelC: error: label not defined", build.GetProperty("message").GetString());
+    }
+
+    [Fact]
     public void Truncated_lists_say_so()
     {
         var report = new BuildReport(false, 60, 0, 1, [], [], true, null, null);

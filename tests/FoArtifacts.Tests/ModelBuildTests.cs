@@ -47,6 +47,19 @@ public class ModelBuildTests
         Assert.DoesNotContain(fake.Calls, c => c.StartsWith("build"));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("Contoso Fleet")]
+    public async Task A_blank_or_invalid_model_name_is_refused_before_d365fo_runs(string model)
+    {
+        var fake = new FakeD365fo();
+
+        var report = await Make(fake).RunAsync(model, null, Ct);
+
+        Assert.Equal("BAD_INPUT", report.Error!.Code);
+        Assert.Empty(fake.Calls);
+    }
+
     [Fact]
     public async Task An_unusable_d365fo_is_reported()
     {

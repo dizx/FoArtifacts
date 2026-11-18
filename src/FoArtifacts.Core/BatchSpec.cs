@@ -45,6 +45,12 @@ public static partial class BatchSpec
     [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$")]
     private static partial Regex AotName();
 
+    /// <summary>True for a valid model name. d365fo reads <c>--model ""</c> as no filter, so a blank name must never reach it.</summary>
+    public static bool IsModelName(string? name) => !string.IsNullOrWhiteSpace(name) && AotName().IsMatch(name);
+
+    public static string BadModelName(string? name) =>
+        $"model: '{name}' is not a valid model name (letters, digits and _ only).";
+
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9_]*$")]
     private static partial Regex PrefixName();
 
@@ -55,8 +61,8 @@ public static partial class BatchSpec
     {
         var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(request.Model) || !AotName().IsMatch(request.Model))
-            errors.Add($"model: '{request.Model}' is not a valid model name (letters, digits and _ only).");
+        if (!IsModelName(request.Model))
+            errors.Add(BadModelName(request.Model));
         if (request.Prefix is null)
             errors.Add("prefix: required; use \"\" for no prefix.");
         else if (request.Prefix.Length > 0 && !PrefixName().IsMatch(request.Prefix))

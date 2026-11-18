@@ -106,7 +106,9 @@ list-details form, a menu item and maintain security"). It calls the tool with s
 - `dry_run: true` returns the stages and exact `d365fo` commands without writing.
 - `build: true` compiles the model after the batch. The result's `build` section has `succeeded`, the
   full `error_count` / `warning_count`, at most 50 errors (those in the batch's objects first) and up
-  to 20 warnings in the batch's objects, and the path of xppc's log. A dry run shows the build command.
+  to 20 warnings in the batch's objects, and the path of xppc's log. A build that failed before the
+  compiler ran (labels, for example) has no errors; its `message` holds d365fo's last output instead.
+  A dry run shows the build command.
 
 On failure the result names the failing task, d365fo's error and hint, and whether the rollback
 succeeded. If the d365fo journal shows writes that are not from the batch (for example you ran
