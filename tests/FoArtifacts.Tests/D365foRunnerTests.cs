@@ -88,4 +88,16 @@ public class D365foRunnerTests
     [InlineData(null, 120)]
     public void Timeout_comes_from_FO_ARTIFACTS_TIMEOUT_SECONDS(string? value, int seconds) =>
         Assert.Equal(TimeSpan.FromSeconds(seconds), CliLocator.Timeout(name => name == "FO_ARTIFACTS_TIMEOUT_SECONDS" ? value : null));
+
+    [Theory]
+    [InlineData("1800", 1800)]
+    [InlineData("abc", 900)]
+    [InlineData("0", 900)]
+    [InlineData(null, 900)]
+    public void Build_timeout_comes_from_FO_ARTIFACTS_BUILD_TIMEOUT_SECONDS(string? value, int seconds) =>
+        Assert.Equal(TimeSpan.FromSeconds(seconds), CliLocator.BuildTimeout(name => name == "FO_ARTIFACTS_BUILD_TIMEOUT_SECONDS" ? value : null));
+
+    [Fact]
+    public void The_build_timeout_ignores_the_per_call_timeout() =>
+        Assert.Equal(TimeSpan.FromSeconds(900), CliLocator.BuildTimeout(name => name == "FO_ARTIFACTS_TIMEOUT_SECONDS" ? "30" : null));
 }

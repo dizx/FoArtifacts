@@ -18,6 +18,8 @@ public sealed class GenerateFoArtifactsTool(BatchExecutor executor)
         + "For extension, options.kind (Table, Form, ...) is required. Do not pass out, install-to, apply-to, output, overwrite, "
         + "no-refresh, add-to, into-role or any out-* option (their writes could not be rolled back). Run `d365fo generate <type> --help` in a terminal for each type's options. "
         + "Use dry_run to see the plan first. "
+        + "Set build to compile the model after a successful batch: compiler errors come back under build, marked in_batch "
+        + "when they are in objects this batch wrote, and a failed build does not undo the batch. "
         + "Supported types: aggregate-entity, business-event, class, coc, composite-entity, configuration-key, control-method, "
         + "custom-service, datasource-method, duty, edt, entity, enum, event-handler, extension, find-methods, form, form-clone, "
         + "form-part, label-file, map, menu, menu-item, migration-script, number-sequence, privilege, query, report, "
@@ -31,9 +33,10 @@ public sealed class GenerateFoArtifactsTool(BatchExecutor executor)
         [Description("Artifacts to create, e.g. {\"type\":\"table\",\"name\":\"Vehicle\",\"options\":{\"pattern\":\"main\",\"field\":[\"VehicleId:VehicleId:mandatory\"]}}.")]
         List<TaskInput> tasks,
         [Description("Plan only: return the stages and d365fo commands without writing anything.")] bool dry_run = false,
+        [Description("Compile the model after the batch succeeds and return the compiler errors. A failed build does not undo the batch.")] bool build = false,
         CancellationToken cancellationToken = default)
     {
-        var result = await executor.RunAsync(new BatchRequest(model, prefix, tasks, dry_run), cancellationToken);
+        var result = await executor.RunAsync(new BatchRequest(model, prefix, tasks, dry_run, build), cancellationToken);
         return new CallToolResult
         {
             Content = [new TextContentBlock { Text = Summary.ToJson(result) }],

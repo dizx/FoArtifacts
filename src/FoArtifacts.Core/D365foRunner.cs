@@ -144,8 +144,13 @@ public static class CliLocator
     public static string Resolve(Func<string, string?> getEnv) =>
         getEnv("D365FO_CLI") is { } path && !string.IsNullOrWhiteSpace(path) ? path : "d365fo";
 
-    public static TimeSpan Timeout(Func<string, string?> getEnv) =>
-        int.TryParse(getEnv("FO_ARTIFACTS_TIMEOUT_SECONDS"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) && seconds > 0
+    public static TimeSpan Timeout(Func<string, string?> getEnv) => Seconds(getEnv("FO_ARTIFACTS_TIMEOUT_SECONDS"), 120);
+
+    /// <summary>The limit for <c>d365fo build</c> alone: a large model compiles for minutes.</summary>
+    public static TimeSpan BuildTimeout(Func<string, string?> getEnv) => Seconds(getEnv("FO_ARTIFACTS_BUILD_TIMEOUT_SECONDS"), 900);
+
+    private static TimeSpan Seconds(string? value, int fallback) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds)
-            : TimeSpan.FromSeconds(120);
+            : TimeSpan.FromSeconds(fallback);
 }
