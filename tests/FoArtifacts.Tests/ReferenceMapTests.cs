@@ -29,7 +29,7 @@ public class ReferenceMapTests
 
     [Fact]
     public void Is_pinned_to_the_tested_d365fo_commit() =>
-        Assert.Equal("c1761561269709657484e596a5c3d378ba9a5b18", Map.D365foCommit);
+        Assert.Equal("b60ffdd65fd182d378bce396fbc9f14849f8ce62", Map.D365foCommit);
 
     [Fact]
     public void Uses_only_known_kinds()

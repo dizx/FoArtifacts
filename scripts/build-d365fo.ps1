@@ -1,6 +1,6 @@
 # Clones d365fo-cli at the commit fo-artifacts is tested against, builds it, and prints the d365fo path.
 $ErrorActionPreference = 'Stop'
-$Commit = 'c1761561269709657484e596a5c3d378ba9a5b18'
+$Commit = 'b60ffdd65fd182d378bce396fbc9f14849f8ce62'
 $Root = Split-Path -Parent $PSScriptRoot
 $Dir = Join-Path $Root '.d365fo-cli'
 # A fork of dynamics365ninja/d365fo-cli carrying fixes fo-artifacts needs (see README).
