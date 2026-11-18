@@ -68,7 +68,7 @@ internal sealed class FakeD365fo : ID365fo
                 Journal.RemoveRange(Journal.Count - steps, steps);
                 return Ok(new { reverted = steps });
             case "index":
-                return Ok(new { modelsProcessed = 1 });
+                return Ok(new { modelsProcessed = 1, modelsSkipped = 0 });
             case "get" when a[1] == "table":
                 return ExistingTables.TryGetValue(a[2], out var tableModel)
                     ? Ok(new { table = new { name = a[2], model = tableModel, sourcePath = $"/pkg/{tableModel}/AxTable/{a[2]}.xml" } })

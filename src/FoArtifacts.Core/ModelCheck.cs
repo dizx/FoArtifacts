@@ -37,6 +37,11 @@ public sealed class ModelCheck(ID365fo cli)
         + "d365fo skips an empty model (one with no Ax* folder such as AxClass yet), so create one "
         + "empty Ax* folder in the model folder first.";
 
+    public static string StillNotIndexed(string model) =>
+        $"Model '{model}' is still not in the d365fo index after the refresh. d365fo skips an empty model "
+        + "(one with no Ax* folder such as AxClass yet), so create one empty Ax* folder in the model folder, "
+        + "and check that the model folder is under D365FO_PACKAGES_PATH.";
+
     public static string NotCustom(string model) =>
         $"Model '{model}' is not marked as custom in d365fo. Add it to D365FO_CUSTOM_MODELS.";
 
