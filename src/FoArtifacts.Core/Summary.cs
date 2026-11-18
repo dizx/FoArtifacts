@@ -24,6 +24,44 @@ public static class Summary
 
     public static string ToJson(BatchResult result) => JsonSerializer.Serialize(Build(result), Options);
 
+    /// <summary>The result of build_model: <c>ok</c> means the build ran and succeeded.</summary>
+    public static string ToJson(string model, BuildReport report) =>
+        JsonSerializer.Serialize(new { ok = report.Succeeded == true, model, build = BuildSection(report) }, Options);
+
+    public static string ToJson(RefreshReport r) => JsonSerializer.Serialize(
+        r.Error is not null
+            ? new { ok = false, model = r.Model, error = ErrorJson(r.Error) }
+            : (object)new
+            {
+                ok = true,
+                model = r.Model,
+                refreshed = r.Refreshed,
+                elapsed_ms = r.ElapsedMs,
+                warnings = r.Warnings.Count > 0 ? r.Warnings : null,
+            },
+        Options);
+
+    /// <summary>The <c>build</c> section shared by a batch result and build_model.</summary>
+    internal static object BuildSection(BuildReport b) =>
+        b.Error is not null
+            ? (object)new { error = ErrorJson(b.Error) }
+            : new
+            {
+                succeeded = b.Succeeded,
+                error_count = b.ErrorCount,
+                warning_count = b.WarningCount,
+                elapsed_ms = b.ElapsedMs,
+                errors = b.Errors.Select(Diagnostic).ToList(),
+                warnings = b.Warnings.Select(Diagnostic).ToList(),
+                truncated = b.Truncated ? true : (bool?)null,
+                log = b.Log,
+            };
+
+    private static object Diagnostic(BuildDiagnostic d) =>
+        new { @object = d.Object, kind = d.Kind, member = d.Member, message = d.Message, in_batch = d.InBatch };
+
+    private static object ErrorJson(ToolError e) => new { code = e.Code, message = e.Message, hint = e.Hint };
+
     private static object Build(BatchResult r)
     {
         if (r.Errors.Count > 0)
