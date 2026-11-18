@@ -11,4 +11,7 @@
     <ProjectReference Include="../../src/FoArtifacts.Core/FoArtifacts.Core.csproj" />
     <ProjectReference Include="../../src/FoArtifacts/FoArtifacts.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
