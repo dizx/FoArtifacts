@@ -17,7 +17,7 @@ public sealed record ExpandedTask(
     public string Label => $"{Type} {Name}";
 }
 
-public sealed record ExpandedBatch(string Model, string Prefix, bool DryRun, IReadOnlyList<ExpandedTask> Tasks);
+public sealed record ExpandedBatch(string Model, string Prefix, bool DryRun, IReadOnlyList<ExpandedTask> Tasks, bool Build = false);
 
 public static class NameExpander
 {
@@ -121,7 +121,7 @@ public static class NameExpander
 
         return errors.Count > 0
             ? (null, errors)
-            : (new ExpandedBatch(batch.Model, batch.Prefix, batch.DryRun, expandedTasks), errors);
+            : (new ExpandedBatch(batch.Model, batch.Prefix, batch.DryRun, expandedTasks, batch.Build), errors);
     }
 
     /// <summary>Applies one <see cref="RefRule"/> to an option value, resolving only the parts it names.</summary>

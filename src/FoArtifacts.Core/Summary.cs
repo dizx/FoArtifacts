@@ -84,6 +84,7 @@ public static class Summary
                     stage = s.Number,
                     commands = s.Tasks.Select(t => CommandBuilder.Render(CommandBuilder.Build(t, r.Model))).ToList(),
                 }).ToList(),
+                build = r.BuildRequested ? CommandBuilder.Render(ModelBuild.Args(r.Model)) : null,
             };
 
         var warnings = NullIfEmpty(CollectWarnings(r));
@@ -92,7 +93,16 @@ public static class Summary
             .ToList();
 
         if (r.Ok)
-            return new { ok = true, model = r.Model, stages = r.Stages.Count, elapsed_ms = r.ElapsedMs, artifacts, warnings };
+            return new
+            {
+                ok = true,
+                model = r.Model,
+                stages = r.Stages.Count,
+                elapsed_ms = r.ElapsedMs,
+                artifacts,
+                build = r.Build is null ? null : BuildSection(r.Build),
+                warnings,
+            };
 
         return new
         {

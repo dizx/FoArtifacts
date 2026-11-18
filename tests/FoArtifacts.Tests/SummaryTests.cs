@@ -82,6 +82,36 @@ public class SummaryTests
     }
 
     [Fact]
+    public async Task A_dry_run_with_build_ends_with_the_build_command()
+    {
+        var json = await RunAsync(new FakeD365fo(), Request(dryRun: true) with { Build = true });
+
+        Assert.Equal("d365fo build --model ContosoFleet --output json", json.GetProperty("build").GetString());
+    }
+
+    [Fact]
+    public async Task A_dry_run_without_build_has_no_build_command()
+    {
+        var json = await RunAsync(new FakeD365fo(), Request(dryRun: true));
+
+        Assert.False(json.TryGetProperty("build", out _));
+    }
+
+    [Fact]
+    public async Task A_built_batch_reports_the_build_next_to_its_artifacts()
+    {
+        var fake = new FakeD365fo { Override = a => a[0] == "build" ? FakeD365fo.BuildFailed(("CFltVehicle", "Bad field")) : null };
+
+        var json = await RunAsync(fake, Request() with { Build = true });
+
+        Assert.True(json.GetProperty("ok").GetBoolean());
+        Assert.Equal(2, json.GetProperty("artifacts").GetArrayLength());
+        var build = json.GetProperty("build");
+        Assert.False(build.GetProperty("succeeded").GetBoolean());
+        Assert.True(build.GetProperty("errors")[0].GetProperty("in_batch").GetBoolean());
+    }
+
+    [Fact]
     public void Build_model_json_lists_errors_without_in_batch()
     {
         var report = BuildReport.From(Fixture("build-failed.json", 1), null, 1);

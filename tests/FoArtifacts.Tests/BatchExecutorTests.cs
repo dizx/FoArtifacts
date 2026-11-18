@@ -26,6 +26,156 @@ public class BatchExecutorTests
     private static Func<IReadOnlyList<string>, CliResult?> FailWhen(string type, string code = "WRITE_FAILED") =>
         a => a[0] == "generate" && a[1] == type ? FakeD365fo.Fail(code, $"{type} failed") : null;
 
+    private const string BuildCall = "build --model ContosoFleet --output json";
+
+    [Fact]
+    public async Task Without_build_the_model_is_not_compiled()
+    {
+        var (fake, executor) = Make();
+
+        var result = await executor.RunAsync(Vehicle(), Ct);
+
+        Assert.True(result.Ok);
+        Assert.DoesNotContain(BuildCall, fake.Calls);
+        Assert.Null(result.Build);
+    }
+
+    [Fact]
+    public async Task With_build_the_model_is_compiled_once_after_the_last_refresh()
+    {
+        var (fake, executor) = Make();
+
+        var result = await executor.RunAsync(Vehicle() with { Build = true }, Ct);
+
+        Assert.True(result.Ok);
+        Assert.True(result.Build!.Succeeded);
+        var steps = fake.Calls.Where(c => c.StartsWith("generate ") || c.StartsWith("index refresh") || c.StartsWith("build ")).ToList();
+        Assert.Equal(new[] { Refresh, BuildCall }, steps.TakeLast(2));
+        Assert.Equal(1, fake.Calls.Count(c => c == BuildCall));
+    }
+
+    [Fact]
+    public async Task A_failed_batch_is_rolled_back_and_not_built()
+    {
+        var (fake, executor) = Make();
+        fake.Override = FailWhen("table");
+
+        var result = await executor.RunAsync(Vehicle() with { Build = true }, Ct);
+
+        Assert.False(result.Ok);
+        Assert.True(result.Rollback!.RolledBack);
+        Assert.Null(result.Build);
+        Assert.DoesNotContain(BuildCall, fake.Calls);
+    }
+
+    [Fact]
+    public async Task A_failed_build_keeps_the_batch()
+    {
+        var (fake, executor) = Make();
+        fake.Override = a => a[0] == "build" ? FakeD365fo.BuildFailed(("CFltVehicle", "Bad field")) : null;
+
+        var result = await executor.RunAsync(Vehicle() with { Build = true }, Ct);
+
+        Assert.True(result.Ok);
+        Assert.False(result.Build!.Succeeded);
+        Assert.Null(result.Rollback);
+        Assert.DoesNotContain(fake.Calls, c => c.StartsWith("undo"));
+        Assert.Equal(3, fake.Journal.Count);
+    }
+
+    [Fact]
+    public async Task Build_errors_in_the_batchs_objects_are_marked()
+    {
+        var (fake, executor) = Make();
+        fake.Override = a => a[0] == "build"
+            ? FakeD365fo.BuildFailed(("OldThing", "Was already broken"), ("CFLTVEHICLE", "Bad field"))
+            : null;
+
+        var result = await executor.RunAsync(Vehicle() with { Build = true }, Ct);
+
+        Assert.Equal("CFLTVEHICLE", result.Build!.Errors[0].Object);
+        Assert.True(result.Build.Errors[0].InBatch);
+        Assert.Equal("OldThing", result.Build.Errors[1].Object);
+        Assert.False(result.Build.Errors[1].InBatch);
+    }
+
+    [Fact]
+    public async Task Batch_objects_are_task_names_definitions_and_reported_files()
+    {
+        var (fake, executor) = Make();
+        fake.Override = a => a[0] == "generate" && a[1] == "table"
+            ? FakeD365fo.Ok(new { path = "/pkg/ContosoFleet/AxTable/CFltVehicle.xml", companion = new { path = "/pkg/ContosoFleet/AxSecurityPrivilege/CFltVehicleView.xml" } })
+            : null;
+
+        var result = await executor.RunAsync(Vehicle(), Ct);
+        var objects = BatchExecutor.BatchObjects(result.Completed);
+
+        Assert.Contains("CFltVehicleStatus", objects);
+        Assert.Contains("cfltvehicle", objects);
+        Assert.Contains("CFltVehicleView", objects);
+    }
+
+    [Fact]
+    public async Task A_batch_on_a_model_not_marked_custom_is_written_but_not_built()
+    {
+        var (fake, executor) = Make();
+        fake.Models[0] = ("ContosoFleet", false);
+
+        var result = await executor.RunAsync(Vehicle() with { Build = true }, Ct);
+
+        Assert.True(result.Ok);
+        Assert.Contains("D365FO_CUSTOM_MODELS", Assert.Single(result.Warnings));
+        Assert.Equal("MODEL_NOT_CUSTOM", result.Build!.Error!.Code);
+        Assert.DoesNotContain(BuildCall, fake.Calls);
+    }
+
+    [Fact]
+    public async Task The_build_can_be_cancelled_but_the_writes_cannot()
+    {
+        var (fake, executor) = Make();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        await executor.RunAsync(Vehicle() with { Build = true }, cts.Token);
+
+        Assert.True(fake.Cancellable[fake.Calls.IndexOf(BuildCall)]);
+        var writes = fake.Calls.Select((c, i) => (c, i)).Where(x => x.c.StartsWith("generate ") || x.c.StartsWith("index refresh"));
+        Assert.All(writes, x => Assert.False(fake.Cancellable[x.i], $"'{x.c}' could be cancelled"));
+    }
+
+    [Fact]
+    public async Task Cancelling_during_the_build_keeps_the_batch()
+    {
+        var gate = new ModelLock();
+        var fake = new FakeD365fo();
+        var executor = new BatchExecutor(fake, Map, gate);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        fake.Override = a =>
+        {
+            if (a[0] != "build") return null;
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        };
+
+        var result = await executor.RunAsync(Vehicle() with { Build = true }, cts.Token);
+
+        Assert.True(result.Ok);
+        Assert.Equal("CANCELLED", result.Build!.Error!.Code);
+        Assert.DoesNotContain(fake.Calls, c => c.StartsWith("undo"));
+        using var again = await gate.AcquireAsync(Ct); // the lock was released
+    }
+
+    [Fact]
+    public async Task A_dry_run_with_build_calls_nothing_and_notes_the_build()
+    {
+        var (fake, executor) = Make();
+
+        var result = await executor.RunAsync(Vehicle() with { DryRun = true, Build = true }, Ct);
+
+        Assert.Empty(fake.Calls);
+        Assert.True(result.BuildRequested);
+        Assert.Null(result.Build);
+    }
+
     [Fact]
     public async Task A_batch_waits_for_the_shared_model_lock()
     {

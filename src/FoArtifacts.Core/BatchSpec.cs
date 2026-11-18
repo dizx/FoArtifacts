@@ -7,7 +7,7 @@ namespace FoArtifacts.Core;
 public sealed record TaskInput(string Type, string Name, Dictionary<string, JsonElement>? Options = null);
 
 /// <summary>A whole tool call.</summary>
-public sealed record BatchRequest(string Model, string Prefix, IReadOnlyList<TaskInput> Tasks, bool DryRun = false);
+public sealed record BatchRequest(string Model, string Prefix, IReadOnlyList<TaskInput> Tasks, bool DryRun = false, bool Build = false);
 
 /// <summary>A task that passed validation. Options keep their order; a repeated option appears once per value.</summary>
 public sealed record ValidTask(
@@ -23,7 +23,7 @@ public sealed record ValidTask(
         Options.Where(o => o.Key == option).Select(o => o.Value).ToList();
 }
 
-public sealed record ValidBatch(string Model, string Prefix, bool DryRun, IReadOnlyList<ValidTask> Tasks);
+public sealed record ValidBatch(string Model, string Prefix, bool DryRun, IReadOnlyList<ValidTask> Tasks, bool Build = false);
 
 public static partial class BatchSpec
 {
@@ -147,6 +147,6 @@ public static partial class BatchSpec
 
         return errors.Count > 0
             ? (null, errors)
-            : (new ValidBatch(request.Model, request.Prefix ?? "", request.DryRun, valid), errors);
+            : (new ValidBatch(request.Model, request.Prefix ?? "", request.DryRun, valid, request.Build), errors);
     }
 }

@@ -106,6 +106,22 @@ internal sealed class FakeD365fo : ID365fo
     public static CliResult Ok(object data, params string[] warnings) =>
         Envelope.Parse(0, JsonSerializer.Serialize(new { ok = true, data, warnings }), "");
 
+    /// <summary>A failed build as d365fo reports it: ok true, exit code 1, one error per pair.</summary>
+    public static CliResult BuildFailed(params (string Object, string Message)[] errors) =>
+        Envelope.Parse(1, JsonSerializer.Serialize(new
+        {
+            ok = true,
+            data = new
+            {
+                buildSucceeded = false,
+                errorCount = errors.Length,
+                warningCount = 0,
+                errors = errors.Select(e => new { severity = "error", kind = "AxTable", @object = e.Object, member = "", message = e.Message }),
+                warnings = Array.Empty<object>(),
+            },
+            warnings = new[] { "build-failed" },
+        }), "");
+
     public static CliResult Fail(string code, string message, string? hint = null) =>
         Envelope.Parse(1, JsonSerializer.Serialize(new { ok = false, error = new { code, message, hint } }), "");
 }

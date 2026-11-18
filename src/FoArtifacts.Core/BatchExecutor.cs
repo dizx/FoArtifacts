@@ -19,14 +19,17 @@ public sealed record BatchResult(
     IReadOnlyList<TaskOutcome> Completed,
     BatchFailure? Failure,
     RollbackReport? Rollback,
-    long ElapsedMs);
+    long ElapsedMs,
+    bool BuildRequested = false,
+    BuildReport? Build = null);
 
-public sealed class BatchExecutor(ID365fo cli, ReferenceMap map, ModelLock? modelLock = null)
+public sealed class BatchExecutor(ID365fo cli, ReferenceMap map, ModelLock? modelLock = null, ModelBuild? builder = null)
 {
     public const int JournalLimit = 2000;
 
     private readonly ModelLock _lock = modelLock ?? new ModelLock();
     private readonly ModelCheck _check = new(cli);
+    private readonly ModelBuild _build = builder ?? new ModelBuild(cli, new ModelCheck(cli));
 
     public static IReadOnlyList<string> RefreshArgs(string model) =>
         ["index", "refresh", "--model", model, "--output", "json"];
@@ -41,7 +44,8 @@ public sealed class BatchExecutor(ID365fo cli, ReferenceMap map, ModelLock? mode
         var (stages, planErrors) = Planner.Plan(expanded, map);
         if (stages is null) return Rejected(request, planErrors, clock);
         if (expanded.DryRun)
-            return new BatchResult(true, true, expanded.Model, [], [], stages, [], null, null, clock.ElapsedMilliseconds);
+            return new BatchResult(true, true, expanded.Model, [], [], stages, [], null, null, clock.ElapsedMilliseconds,
+                BuildRequested: expanded.Build);
 
         using (await _lock.AcquireAsync(ct))
             return await ExecuteAsync(expanded, stages, clock, ct);
@@ -120,7 +124,13 @@ public sealed class BatchExecutor(ID365fo cli, ReferenceMap map, ModelLock? mode
         }
 
         if (failure is null)
-            return new BatchResult(true, false, batch.Model, [], warnings, stages, completed, null, null, clock.ElapsedMilliseconds);
+        {
+            // Still inside the lock, so nothing writes to the model while it compiles. A failed build keeps
+            // the batch: d365fo compiles the whole model, so an error may predate the batch.
+            var build = batch.Build ? await _build.RunAsync(batch.Model, BatchObjects(completed), ct) : null;
+            return new BatchResult(true, false, batch.Model, [], warnings, stages, completed, null, null,
+                clock.ElapsedMilliseconds, batch.Build, build);
+        }
 
         var rollback = await RollBackAsync(batch, anchorId, tracker, completed, failure);
         return new BatchResult(false, false, batch.Model, [], warnings, stages, completed, failure, rollback, clock.ElapsedMilliseconds);
@@ -178,6 +188,23 @@ public sealed class BatchExecutor(ID365fo cli, ReferenceMap map, ModelLock? mode
 
     private static BatchFailure Fail(string step, ExpandedTask? task, CliResult result) =>
         new(step, task?.Label, result.ErrorCode ?? "UNKNOWN", result.ErrorMessage ?? "", result.ErrorHint);
+
+    /// <summary>
+    /// Names of the objects a batch wrote or changed, for marking build errors <c>in_batch</c>: each task's
+    /// name (for form methods, the form), the names it defines, and the file name of every path it reported.
+    /// </summary>
+    public static IReadOnlySet<string> BatchObjects(IEnumerable<TaskOutcome> completed)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var outcome in completed)
+        {
+            names.Add(outcome.Task.Name);
+            names.UnionWith(outcome.Task.DefinedNames);
+            foreach (var path in ArtifactPaths.From(outcome.Result.Data))
+                names.Add(Path.GetFileNameWithoutExtension(path));
+        }
+        return names;
+    }
 
     private async Task<string?> PreflightAsync(string model, List<string> warnings, CancellationToken ct)
     {
