@@ -86,6 +86,18 @@ internal sealed class FakeD365fo : ID365fo
                 }
                 Record(type, name, model, target);
                 return Ok(new { path = target });
+            case "build":
+                return Ok(new
+                {
+                    buildSucceeded = true,
+                    exitCode = 0,
+                    elapsedMs = 5,
+                    errorCount = 0,
+                    warningCount = 0,
+                    errors = Array.Empty<object>(),
+                    warnings = Array.Empty<object>(),
+                    models = new[] { new { model = a[2], xppc = new { log = $"/pkg/{a[2]}/BuildModelResult.log" } } },
+                });
             default:
                 return Fail("BAD_INPUT", $"Unknown command '{a[0]}'.");
         }
