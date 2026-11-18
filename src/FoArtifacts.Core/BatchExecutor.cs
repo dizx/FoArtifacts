@@ -203,7 +203,9 @@ public sealed class BatchExecutor(ID365fo cli, ReferenceMap map)
         {
             var known = items.Select(i => Str(i, "name")).Where(n => n is not null).Take(20);
             return $"Model '{model}' is not in the d365fo index. Known models: {string.Join(", ", known)}. "
-                + "Check the name, or run `d365fo index refresh` if the model is new.";
+                + $"Check the name. If the model is new, run `d365fo index refresh --model {model}`; "
+                + "d365fo skips an empty model (one with no Ax* folder such as AxClass yet), so create one "
+                + "empty Ax* folder in the model folder first.";
         }
         if (!(match.TryGetProperty("isCustom", out var custom) && custom.ValueKind == JsonValueKind.True))
             warnings.Add($"Model '{model}' is not marked as custom in d365fo. Add it to D365FO_CUSTOM_MODELS.");

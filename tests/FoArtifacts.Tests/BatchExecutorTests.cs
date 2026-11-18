@@ -193,6 +193,20 @@ public class BatchExecutorTests
     }
 
     [Fact]
+    public async Task An_unknown_model_error_explains_that_an_empty_model_is_not_indexed()
+    {
+        // d365fo only indexes a model folder that has an Ax* subfolder, so `index refresh` alone
+        // never makes a brand-new, empty model known.
+        var (_, executor) = Make();
+        var result = await executor.RunAsync(Vehicle() with { Model = "Nope" }, Ct);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("empty", error);
+        Assert.Contains("Ax", error);
+        Assert.Contains("d365fo index refresh --model Nope", error);
+    }
+
+    [Fact]
     public async Task A_model_not_marked_custom_gives_a_warning()
     {
         var (fake, executor) = Make();
